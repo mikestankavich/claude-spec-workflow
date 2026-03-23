@@ -500,6 +500,13 @@ your-project/
     └── README.md         # Workflow documentation
 ```
 
+**Important:** All spec files (spec.md, plan.md, log.md) should be committed to git. They provide a complete audit trail of the feature development process:
+- `spec.md` - What you're building and why
+- `plan.md` - How you're building it
+- `log.md` - Proof that validation passed during `/build`
+
+The `/cleanup` command uses log.md to determine which specs have been completed and shipped. Don't gitignore these files.
+
 ## Uninstalling
 
 ```bash

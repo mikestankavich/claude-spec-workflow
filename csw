@@ -286,14 +286,6 @@ case "${1:-}" in
         echo "   ✓ README.md"
         echo ""
 
-        # Add to .gitignore
-        if [ -f "$PROJECT_DIR/.gitignore" ]; then
-            if ! grep -q "spec/active/\*/log.md" "$PROJECT_DIR/.gitignore" 2>/dev/null; then
-                echo "📝 Adding spec logs to .gitignore..."
-                echo -e "\n# Spec workflow logs\nspec/active/*/log.md" >> "$PROJECT_DIR/.gitignore"
-            fi
-        fi
-
         # Create spec/csw symlink (always direct path - fallback use case)
         echo "🔗 Creating spec/csw symlink..."
         CSW_BIN="$CSW_HOME/csw"

@@ -147,7 +147,6 @@ This release consolidates 10 shipped features since v0.2.2, including major boot
   - `--no-bootstrap-spec` flag to opt out
   - Interactive prompts for directory creation and reinit confirmation
   - Creates `spec/csw` symlink for project-local usage
-  - Auto-updates `.gitignore` with spec log patterns
 - **`csw uninstall` subcommand** - Replaces `uninstall.sh` with clean removal
   - Removes commands from `~/.claude/commands/`
   - Removes `~/.local/bin/csw` symlink

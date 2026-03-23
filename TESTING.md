@@ -62,12 +62,10 @@ csw init .
 - `spec/template.md`, `spec/stack.md`, `spec/README.md` copied
 - `spec/bootstrap/` created with validation spec
 - `spec/csw` symlink created
-- `.gitignore` updated (if exists)
 
 **Verify:**
 ```bash
 ls -la spec/
-cat .gitignore | grep "spec/active/\*/log.md"
 ```
 
 ### Test 6: Initialize with Different Preset
