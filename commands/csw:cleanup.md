@@ -44,13 +44,28 @@ Optional: PR number (e.g., `/csw:cleanup 42`). If not provided, auto-detected fr
    - Reporting GitHub issue status (if `gh` available)
    - Detecting Linear issue references in PR body/comments
 
-2. **Parse script output for Linear issues**
+2. **Close open GitHub issues** (if `gh` available)
+
+   Look for `OPEN_GITHUB_ISSUES=` in the script output. This contains space-separated issue numbers.
+
+   If open issues were found:
+   a. Present them to the user:
+      ```
+      📋 Open GitHub Issues referenced by this PR:
+        - #63: "Issue title" (Open)
+
+      Would you like me to close these?
+      ```
+   b. On user confirmation, run `gh issue close <number>` for each issue
+   c. If the user declines, skip — do not close
+
+3. **Parse script output for Linear issues**
 
    Look for `LINEAR_ISSUES=` in the script output. This contains space/newline-separated issue identifiers (e.g., `ENG-123`, `PROJ-456`).
 
-3. **Linear MCP integration** (optional — skip silently if unavailable)
+4. **Linear MCP integration** (optional — skip silently if unavailable)
 
-   If Linear issue references were found in step 2:
+   If Linear issue references were found in step 3:
 
    a. For each issue identifier, use `mcp__linear-server__list_issues` to search for the issue
    b. Use `mcp__linear-server__get_issue_status` to check if it's still open
@@ -65,7 +80,7 @@ Optional: PR number (e.g., `/csw:cleanup 42`). If not provided, auto-detected fr
    d. On user confirmation, use `mcp__linear-server__save_issue` to transition each to Done
    e. If Linear MCP tools are not available (tool calls fail), skip silently — do not error
 
-4. **Summary**
+5. **Summary**
 
    Display a clean summary of what was done:
 
@@ -99,6 +114,8 @@ Optional: PR number (e.g., `/csw:cleanup 42`). If not provided, auto-detected fr
 🧹 Post-Merge Cleanup
 
 [Script output streams here]
+
+[GitHub issue close prompt if open issues found]
 
 [Linear issue handling if applicable]
 
