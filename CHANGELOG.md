@@ -48,25 +48,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _No unreleased changes._
 
-## [0.4.0] - 2025-10-23
+## [0.4.0] - 2026-03-23
 
-> **Workflow Simplification**: Removed SHIPPED.md tracking
+> **Skill Framework Migration**: Native Claude Code integration with colon-namespaced commands
+
+### Breaking Changes
+
+- Commands renamed to colon namespace: `/spec` → `/csw:spec`, `/plan` → `/csw:plan`, etc.
+- `/cleanup` deprecated — cleanup now runs automatically at start of `/csw:spec`
+- `cleanup/merged` branch pattern removed
+- Requires `csw migrate && csw install` for existing users
+
+### Added
+
+- SKILL.md for Claude Code autonomous discovery (`skills/csw/SKILL.md`)
+- `csw migrate` subcommand for removing old command files
+- Dirty-tree guard at start of `/csw:spec`
+- Automatic cleanup of completed specs at start of each new spec cycle
+- `cleanup_completed_specs()` function in `scripts/lib/cleanup.sh`
+- `csw --version` now reads from VERSION file
 
 ### Changed
 
-- **Removed SHIPPED.md from workflow**
-  - **Why remove it**:
-    - Stored commit SHAs that became invalid after squash/rebase merges
-    - Content was never actually read by any workflow command
-    - Redundant: GitHub PRs are the canonical source of truth (`gh pr list --state merged`)
-    - `log.md` presence is the real proof a spec is complete
-  - **What changed**:
-    - `/ship` no longer creates SHIPPED.md
-    - `/cleanup` automatically removes any leftover SHIPPED.md files
-    - `csw init` no longer initializes SHIPPED.md
-    - All documentation updated to reflect simpler workflow
-  - **Migration**: Existing SHIPPED.md files are automatically cleaned up (preserved in git history)
-  - Changed in: `scripts/cleanup.sh:16-21`, `commands/cleanup.md:26-29,101`, `scripts/ship.sh` (PR #40)
+- `csw install` now installs skill + namespaced commands, detects old files
+- `csw init` now installs `.claude/skills/` and `.claude/commands/` at project scope
+- `csw uninstall` removes both skill and namespaced commands + old files
+- All command markdowns updated with `csw:` prefix references
+- `spec/active/` path references updated to `spec/` throughout
+
+### Removed
+
+- Standalone `/cleanup` command (prints deprecation notice)
+- `cleanup/merged` branch detection in `/csw:plan`
+- Old un-namespaced command file installation
+- SHIPPED.md references (already retired in previous cycle)
+
+### Fixed
+
+- `csw --version` was hardcoded to 0.2.2, now reads VERSION file
+- Stale `spec/active/` path references in command docs (#48)
 
 ## [0.3.2] - 2025-10-23
 

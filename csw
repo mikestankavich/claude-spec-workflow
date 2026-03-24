@@ -21,27 +21,28 @@ Claude Spec Workflow (csw) - Specification-driven development CLI
 Usage: csw <command> [arguments]
 
 Bootstrap Commands:
-  install                Install CSW globally (creates ~/.local/bin/csw)
+  install                Install CSW globally (skill + commands + CLI)
   init <dir> [preset] [--no-bootstrap-spec]
                          Initialize project with spec workflow
   uninstall              Remove CSW installation
+  migrate                Remove old un-namespaced command files
 
-Workflow Commands:
+Workflow Commands (also available as /csw:* slash commands):
   spec [name]            Create specification from conversation
   plan <spec-file>       Generate implementation plan
   build                  Execute build with progress tracking
   check                  Run validation suite (test/lint/build)
   ship <feature>         Create PR and prepare for merge
-  cleanup                Clean up shipped features (delete specs)
 
 Examples:
   csw install
   csw init . typescript-react-vite
   csw init /path/to/project python --no-bootstrap-spec
   csw spec auth-system
-  csw plan spec/active/auth-system/spec.md
+  csw plan spec/auth-system/spec.md
   csw check
   csw ship auth-system
+  csw migrate
   csw uninstall
 
 For more information: https://github.com/trakrf/claude-spec-workflow
@@ -74,6 +75,14 @@ case "${1:-}" in
             mkdir -p "$CLAUDE_COMMANDS_DIR"
         fi
 
+        # Install skill
+        echo "📦 Installing skill..."
+        CLAUDE_SKILLS_DIR="$HOME/.claude/skills/csw"
+        mkdir -p "$CLAUDE_SKILLS_DIR"
+        cp "$INSTALL_DIR/skills/csw/SKILL.md" "$CLAUDE_SKILLS_DIR/SKILL.md"
+        echo "   ✓ Installed SKILL.md"
+        echo ""
+
         echo "📦 Installing commands..."
         updated=0
         installed=0
@@ -92,6 +101,20 @@ case "${1:-}" in
             fi
         done
         echo ""
+
+        # Detect old un-namespaced files
+        OLD_COMMANDS=("spec.md" "plan.md" "build.md" "check.md" "ship.md" "cleanup.md")
+        old_found=0
+        for old_cmd in "${OLD_COMMANDS[@]}"; do
+            if [ -f "$CLAUDE_COMMANDS_DIR/$old_cmd" ]; then
+                old_found=$((old_found + 1))
+            fi
+        done
+        if [ $old_found -gt 0 ]; then
+            echo ""
+            echo "⚠️  Found $old_found old un-namespaced command file(s)"
+            echo "   Run: csw migrate"
+        fi
 
         # Install csw CLI
         echo "🔧 Installing csw CLI..."
@@ -249,9 +272,26 @@ case "${1:-}" in
             exit 1
         fi
 
+        # Install skill and commands at project scope
+        echo "📦 Installing Claude skill and commands..."
+        PROJ_SKILLS_DIR="$PROJECT_DIR/.claude/skills/csw"
+        PROJ_COMMANDS_DIR="$PROJECT_DIR/.claude/commands"
+        mkdir -p "$PROJ_SKILLS_DIR"
+        mkdir -p "$PROJ_COMMANDS_DIR"
+        cp "$CSW_HOME/skills/csw/SKILL.md" "$PROJ_SKILLS_DIR/SKILL.md"
+        echo "   ✓ .claude/skills/csw/SKILL.md"
+        for cmd in "$CSW_HOME/commands"/csw:*.md; do
+            if [ -f "$cmd" ]; then
+                filename=$(basename "$cmd")
+                cp "$cmd" "$PROJ_COMMANDS_DIR/$filename"
+                echo "   ✓ .claude/commands/$filename"
+            fi
+        done
+        echo ""
+
         # Create spec directory structure
         echo "📁 Creating spec directories..."
-        mkdir -p "$PROJECT_DIR/spec/active"
+        mkdir -p "$PROJECT_DIR/spec"
 
         # Check for existing files and prompt for overwrite
         FILES_TO_OVERWRITE=()
@@ -348,6 +388,9 @@ case "${1:-}" in
         echo "✅ Claude Spec Workflow Setup Complete!"
         echo ""
         echo "📂 Directory structure:"
+        echo "   .claude/"
+        echo "   ├── skills/csw/SKILL.md  # Autonomous discovery"
+        echo "   └── commands/csw:*.md    # Slash commands"
         echo "   spec/"
         echo "   ├── README.md       # Workflow documentation"
         echo "   ├── template.md     # Spec template"
@@ -359,15 +402,15 @@ case "${1:-}" in
             echo "🚀 Next: Validate installation"
             echo ""
             echo "   In Claude Code:"
-            echo "   1. /plan bootstrap"
-            echo "   2. /build"
-            echo "   3. /check"
-            echo "   4. /ship"
+            echo "   1. /csw:plan bootstrap"
+            echo "   2. /csw:build"
+            echo "   3. /csw:check"
+            echo "   4. /csw:ship"
         fi
 
         echo ""
         echo "💡 Three ways to run commands:"
-        echo "   - In Claude Code:  /plan my-feature"
+        echo "   - In Claude Code:  /csw:plan my-feature"
         echo "   - In terminal:     csw plan my-feature"
         echo "   - In project:      ./spec/csw plan my-feature"
         echo ""
@@ -378,16 +421,34 @@ case "${1:-}" in
         echo "🗑️  Uninstalling Claude Spec Workflow"
         echo ""
 
-        CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
-        COMMANDS=("spec.md" "plan.md" "build.md" "check.md" "ship.md" "cleanup.md")
+        # Remove skill
+        CLAUDE_SKILLS_DIR="$HOME/.claude/skills/csw"
+        if [ -d "$CLAUDE_SKILLS_DIR" ]; then
+            rm -rf "$CLAUDE_SKILLS_DIR"
+            echo "   ✓ Removed skills/csw/"
+        fi
 
-        # Remove Claude commands
+        CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
+
+        # Remove namespaced commands
+        COMMANDS=("csw:spec.md" "csw:plan.md" "csw:build.md" "csw:check.md" "csw:ship.md")
         removed=0
         for cmd in "${COMMANDS[@]}"; do
             cmd_path="$CLAUDE_COMMANDS_DIR/$cmd"
             if [ -f "$cmd_path" ]; then
                 rm "$cmd_path"
                 echo "   ✓ Removed $cmd"
+                removed=$((removed + 1))
+            fi
+        done
+
+        # Also remove old un-namespaced files if present
+        OLD_COMMANDS=("spec.md" "plan.md" "build.md" "check.md" "ship.md" "cleanup.md")
+        for cmd in "${OLD_COMMANDS[@]}"; do
+            cmd_path="$CLAUDE_COMMANDS_DIR/$cmd"
+            if [ -f "$cmd_path" ]; then
+                rm "$cmd_path"
+                echo "   ✓ Removed old $cmd"
                 removed=$((removed + 1))
             fi
         done
@@ -417,17 +478,49 @@ case "${1:-}" in
         echo "✅ Uninstall complete!"
         exit 0
         ;;
-    spec|plan|build|check|ship|cleanup)
+    spec|plan|build|check|ship)
         COMMAND="$1"
         shift
         exec "$SCRIPT_DIR/$COMMAND.sh" "$@"
+        ;;
+    cleanup)
+        # Deprecation — delegate to script which prints notice
+        exec "$SCRIPT_DIR/cleanup.sh"
+        ;;
+    migrate)
+        echo "🔄 Migrating Claude Spec Workflow"
+        echo ""
+
+        CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
+        OLD_COMMANDS=("spec.md" "plan.md" "build.md" "check.md" "ship.md" "cleanup.md")
+        removed=0
+
+        for cmd in "${OLD_COMMANDS[@]}"; do
+            cmd_path="$CLAUDE_COMMANDS_DIR/$cmd"
+            if [ -f "$cmd_path" ]; then
+                rm "$cmd_path"
+                echo "   ✓ Removed old $cmd"
+                removed=$((removed + 1))
+            fi
+        done
+
+        if [ $removed -eq 0 ]; then
+            echo "ℹ️  No old command files found"
+        else
+            echo ""
+            echo "✅ Removed $removed old command file(s)"
+        fi
+        echo ""
+        echo "💡 Next: Run 'csw install' to install new namespaced commands"
+        exit 0
         ;;
     help|--help|-h)
         usage
         exit 0
         ;;
     --version|-v)
-        echo "csw 0.2.2"
+        version=$(cat "$CSW_HOME/VERSION" 2>/dev/null || echo "unknown")
+        echo "csw $version"
         exit 0
         ;;
     "")

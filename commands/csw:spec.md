@@ -15,9 +15,19 @@
 You are tasked with analyzing the current conversation and extracting a formal specification from the discussion.
 
 ## Input
-Optional: Target feature name (e.g., `/spec auth-system`). If not provided, infer from conversation.
+Optional: Target feature name (e.g., `/csw:spec auth-system`). If not provided, infer from conversation.
 
 ## Process
+
+0. **Pre-flight: Dirty-tree Guard & Cleanup** (handled by `csw spec`)
+
+   Before spec creation, the script automatically:
+
+   **Step 1 — Dirty-tree guard**: Rejects uncommitted changes to ensure a clean starting point.
+   **Step 2 — Clean completed specs**: Scans `spec/` for directories containing `log.md` (proof `/csw:build` completed), deletes them, stages, and commits as `chore: clean completed specs from previous cycle`. Skips `spec/backlog/`.
+   **Step 3 — Proceeds to spec creation.**
+
+   This replaces the old standalone `/cleanup` command.
 
 1. **Analyze Current Conversation**
     - Read through the entire conversation history
@@ -63,7 +73,7 @@ Optional: Target feature name (e.g., `/spec auth-system`). If not provided, infe
    **Output from this step**: Mental model of the feature that's ready to formalize.
 
 4. **Generate Draft Specification**
-   Create `spec/active/{feature}/spec.md`:
+   Create `spec/{feature}/spec.md`:
 
    ```markdown
    # Feature: {Inferred Name}
@@ -146,10 +156,10 @@ Key points captured:
 - {secondary requirement}
 - {constraint noted}
 
-Saved to: spec/active/{feature}/spec.md
+Saved to: spec/{feature}/spec.md
 
 Review the spec above and let me know what needs adjustment.
-When ready, run: /plan spec/active/{feature}/spec.md
+When ready, run: /csw:plan spec/{feature}/spec.md
 ```
 
 ## Quality Checks

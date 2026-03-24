@@ -29,7 +29,7 @@ Do NOT treat validation as optional. These are blocking requirements.
 ---
 
 ## Input
-Optional: Workspace name for monorepo projects (e.g., `/check frontend`, `/check backend`)
+Optional: Workspace name for monorepo projects (e.g., `/csw:check frontend`, `/csw:check backend`)
 - If no argument provided: validates entire codebase (all workspaces in monorepo)
 - If workspace provided: validates only that specific workspace
 
@@ -248,7 +248,7 @@ This applies to ALL output examples below. Each line in tables, lists, and summa
 📊 PR Readiness: {status}
 {If not ready: "❌ {N} issues must be fixed before PR"}
 {If warnings: "⚠️  {N} warnings to consider"}
-{If ready: "✅ Ready to ship with /ship"}
+{If ready: "✅ Ready to ship with /csw:ship"}
 ```
 
 **For workspace-specific validation:**
@@ -258,7 +258,7 @@ This applies to ALL output examples below. Each line in tables, lists, and summa
 {Show validation results for that workspace}
 
 📊 Status: {PASS/FAIL/WARNINGS}
-⚡ Faster feedback - full validation with /check (no args)
+⚡ Faster feedback - full validation with /csw:check (no args)
 ```
 
 ## Execution

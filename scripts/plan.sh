@@ -28,13 +28,7 @@ setup_feature_branch() {
     echo ""
 
     # Branch transition logic
-    if [[ $current_branch == "cleanup/merged" ]]; then
-        # Solo dev fast path - specs already cleaned
-        info "🔄 Renaming cleanup/merged → feature/$feature_name"
-        git branch -m "feature/$feature_name"
-        success "✅ Branch renamed for new feature"
-
-    elif [[ $current_branch == "$main_branch" ]] || [[ $current_branch == "master" ]]; then
+    if [[ $current_branch == "$main_branch" ]] || [[ $current_branch == "master" ]]; then
         # Standard path - create new branch from main
         info "🌿 Creating feature/$feature_name from $current_branch"
         git checkout -b "feature/$feature_name"
@@ -49,16 +43,15 @@ setup_feature_branch() {
             error "❌ Cannot create plan - already on a different feature branch"
             echo ""
             echo "Options:"
-            echo "  1. Finish current feature: /build → /ship → merge PR"
-            echo "  2. Clean up and start fresh: /cleanup → /plan"
-            echo "  3. Switch to main: git checkout $main_branch"
+            echo "  1. Finish current feature: /csw:build → /csw:ship → merge PR"
+            echo "  2. Switch to main: git checkout $main_branch"
             exit 1
         fi
 
     else
         # Unknown branch - warn user
         warning "⚠️  Currently on: $current_branch"
-        warning "⚠️  Recommended: Run /cleanup or switch to $main_branch first"
+        warning "⚠️  Recommended: Switch to $main_branch first"
         echo ""
         read -p "Create feature/$feature_name from current branch anyway? (y/n) " -n 1 -r
         echo

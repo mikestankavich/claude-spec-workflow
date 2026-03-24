@@ -43,35 +43,12 @@ The user will provide the path to a specification file (e.g., `spec/auth/spec.md
    - **First: Read `spec/README.md`** to understand workflow standards
    - This ensures consistency with project methodology
 
-2. **Cleanup Shipped Features** (Optional Pre-planning)
-
-   **Recommended workflow**:
-
-   Before running `/plan`, you may want to clean up shipped features:
-
-   **Option A: Automatic cleanup** (Solo devs):
-   - Run `/cleanup` after merging a PR
-   - Creates `cleanup/merged` branch with specs deleted
-   - `/plan` will detect and rename this branch to `feature/new-name`
-
-   **Option B: Manual cleanup** (Team conventions):
-   - Manually delete merged branches: `git branch -d feature/old`
-   - Manually delete shipped specs: `rm -rf spec/old-feature/`
-   - Checkout main before running `/plan`
-
-   **Option C: Skip cleanup** (Works fine):
-   - Run `/plan` from main without cleanup
-   - Old specs remain (harmless, preserved in git)
-   - `/plan` creates new feature branch as usual
-
-   **Note**: Specs are NOT moved to `spec/archive/`. When deleted by /cleanup, they're preserved in git history. Use `gh pr list --state merged` to see shipped features.
-
-3. **Read and Understand Specification**
+2. **Read and Understand Specification**
     - Read the specification file completely
     - Extract: desired outcome, constraints, examples, validation criteria, success metrics
     - Identify any ambiguous requirements and note them
 
-4. **COMPLEXITY ASSESSMENT** (MANDATORY GATE)
+3. **COMPLEXITY ASSESSMENT** (MANDATORY GATE)
 
    Calculate complexity score (0-10) based on:
 
@@ -206,7 +183,7 @@ The user will provide the path to a specification file (e.g., `spec/auth/spec.md
 
    **WAIT FOR USER DECISION**
 
-5. **Ask Mandatory Clarifying Questions** (REQUIRED GATE)
+4. **Ask Mandatory Clarifying Questions** (REQUIRED GATE)
 
    **CRITICAL**: You MUST ask clarifying questions before generating the plan.
 
@@ -294,18 +271,18 @@ This applies to ALL multiple choice questions. Preserve line breaks exactly as s
 
    Incorporate all answers into the plan before proceeding to codebase research.
 
-6. **Research Codebase**
+5. **Research Codebase**
     - Search for similar patterns/features already implemented
     - Identify files that will need modification
     - Find relevant test patterns to follow
     - Note architectural decisions that impact implementation
 
-7. **External Research** (if needed)
+6. **External Research** (if needed)
     - Search for library documentation
     - Find best practices for the specific technology
     - Identify common pitfalls and their solutions
 
-8. **ULTRATHINK: Synthesize All Context into Coherent Plan**
+7. **ULTRATHINK: Synthesize All Context into Coherent Plan**
 
    **CRITICAL**: Before creating the plan, think deeply about everything you've learned.
 
@@ -348,7 +325,7 @@ This applies to ALL multiple choice questions. Preserve line breaks exactly as s
 
    **Output from this step**: Clear mental model of implementation approach, task sequencing, and validation strategy.
 
-9. **Create Implementation Plan**
+8. **Create Implementation Plan**
    Save to `spec/{feature}/plan.md`:
 
    ```markdown
@@ -450,13 +427,12 @@ This applies to ALL multiple choice questions. Preserve line breaks exactly as s
    **Reasoning**: {Brief explanation of confidence score based on factors above}
    ```
 
-10. **Git Setup**
+9. **Git Setup**
 
    After generating the plan, run the git setup workflow via `scripts/plan.sh`:
 
    The script handles:
-   - **Branch creation/renaming**:
-     - If on `cleanup/merged`: Renames to `feature/$feature_name` (solo dev fast path)
+   - **Branch creation**:
      - If on `main`/`master`: Creates `feature/$feature_name` branch
      - If on `feature/$feature_name`: Continues (already on correct branch)
      - If on different feature branch: Errors and suggests options
@@ -469,7 +445,6 @@ This applies to ALL multiple choice questions. Preserve line breaks exactly as s
    ```
 
    **Branch Convention**:
-   - `cleanup/merged` - Magic branch from `/cleanup` command (gets renamed)
    - `feature/*` - Active feature development
    - `main`/`master` - Clean starting point
 
@@ -486,7 +461,7 @@ Report to user:
    One-pass success probability: {percentage}%
 
 📋 Tasks: {N} identified
-⚡ Ready to build: /build spec/{feature}/
+⚡ Ready to build: /csw:build spec/{feature}/
 ```
 
 ## Error Handling

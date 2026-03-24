@@ -54,7 +54,7 @@ Think of it as "the best of both worlds, with training wheels" - structured enou
 
 **GitHub Authentication (for automatic PR creation):**
 
-The `/ship` command can create pull requests automatically if you authenticate with GitHub using any of these methods:
+The `/csw:ship` command can create pull requests automatically if you authenticate with GitHub using any of these methods:
 
 1. **GitHub CLI** (Recommended):
    ```bash
@@ -68,9 +68,9 @@ The `/ship` command can create pull requests automatically if you authenticate w
    # Scopes needed: repo, workflow
    ```
 
-3. **gh config**: If gh CLI is installed, `/ship` will use stored credentials automatically
+3. **gh config**: If gh CLI is installed, `/csw:ship` will use stored credentials automatically
 
-**Without authentication**: `/ship` will provide manual PR creation instructions.
+**Without authentication**: `/csw:ship` will provide manual PR creation instructions.
 
 ## Installation
 
@@ -95,8 +95,8 @@ csw init /path/to/your/project python-fastapi
 
 1. **Create a specification**
    ```bash
-   mkdir -p spec/active/my-feature
-   cp spec/template.md spec/active/my-feature/spec.md
+   mkdir -p spec/my-feature
+   cp spec/template.md spec/my-feature/spec.md
    # Edit spec.md with your requirements
    ```
 
@@ -104,25 +104,25 @@ csw init /path/to/your/project python-fastapi
 
 2. **Generate implementation plan**
    ```
-   /plan spec/active/my-feature/spec.md
+   /csw:plan spec/my-feature/spec.md
    ```
    Claude will ask clarifying questions to ensure a solid plan.
 
 3. **Build with validation**
    ```
-   /build spec/active/my-feature/
+   /csw:build spec/my-feature/
    ```
    Implementation happens with continuous testing and progress tracking.
 
 4. **Check readiness**
    ```
-   /check
+   /csw:check
    ```
    Comprehensive validation ensures your code is PR-ready.
 
 5. **Ship it**
    ```
-   /ship spec/active/my-feature/
+   /csw:ship spec/my-feature/
    ```
    Prepares for pull request with validation and git workflow.
 
@@ -203,7 +203,7 @@ your-build-command
 \```
 ```
 
-The commands `/build`, `/check`, and `/ship` automatically read and use these commands.
+The commands `/csw:build`, `/csw:check`, and `/csw:ship` automatically read and use these commands.
 
 **Built a great stack definition?** Share it with the community! If you've created a stack configuration for a framework or toolchain not yet in our presets, consider contributing it back. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting new presets.
 
@@ -226,9 +226,9 @@ For monorepos with multiple tech stacks (like Go backend + React frontend):
 
 3. **Commands auto-detect workspace:**
    ```bash
-   /build spec/active/auth/   # Detects backend workspace from spec
-   /check                      # Validates all workspaces (database → backend → frontend)
-   /check backend              # Validates only backend workspace (faster feedback)
+   /csw:build spec/auth/       # Detects backend workspace from spec
+   /csw:check                  # Validates all workspaces (database → backend → frontend)
+   /csw:check backend          # Validates only backend workspace (faster feedback)
    ```
 
 The system uses workspace-specific validation commands from `spec/stack.md`:
@@ -240,18 +240,19 @@ The system uses workspace-specific validation commands from `spec/stack.md`:
 
 | Command | What It Does | When to Use |
 |---------|--------------|-------------|
-| `/spec` | **Define WHAT** - Gather requirements and desired outcomes | After exploring bugs, reading tickets, or discussing ideas |
-| `/plan` | **Define HOW** - Generate detailed implementation approach | When you have clear requirements in spec.md |
-| `/build` | **Execute** - Implement the plan with continuous validation | After reviewing and approving the plan |
-| `/check` | **Validate** - Comprehensive pre-ship audit (optional) | For detailed readiness report or pre-ship review |
-| `/ship` | **Finalize** - Commit, push, create PR (runs /check automatically) | When ready to merge |
-| `/cleanup` | **Reset** - Clean up shipped work for next feature | After merging PR (optional solo dev workflow) |
+| `/csw:spec` | **Define WHAT** - Gather requirements and desired outcomes | After exploring bugs, reading tickets, or discussing ideas |
+| `/csw:plan` | **Define HOW** - Generate detailed implementation approach | When you have clear requirements in spec.md |
+| `/csw:build` | **Execute** - Implement the plan with continuous validation | After reviewing and approving the plan |
+| `/csw:check` | **Validate** - Comprehensive pre-ship audit (optional) | For detailed readiness report or pre-ship review |
+| `/csw:ship` | **Finalize** - Commit, push, create PR (runs /csw:check automatically) | When ready to merge |
+
+All commands also work via CLI: `csw spec`, `csw plan`, `csw build`, `csw check`, `csw ship`.
 
 ## Feature Lifecycle
 
 CSW supports a complete feature development cycle:
 
-([spec] | `<spec>`) → plan → build → [check] → ship → `<merge>` → [cleanup] → repeat
+([csw:spec] | `<spec>`) → csw:plan → csw:build → [csw:check] → csw:ship → `<merge>` → repeat
 
 **Legend**:
 - [brackets] - Optional CSW command
@@ -261,29 +262,28 @@ CSW supports a complete feature development cycle:
 ```mermaid
 flowchart LR
     Start([Start Feature]) --> Spec{Create Spec}
-    Spec -->|/spec command| AutoSpec[spec/active/feature/]
+    Spec -->|/csw:spec| AutoSpec[spec/feature/]
     Spec -->|Write manually| ManualSpec[spec/feature/spec.md]
     AutoSpec --> Plan
     ManualSpec --> Plan
-    Plan[/plan] --> Build[build]
-    Build --> Check{/check?}
+    Plan[/csw:plan] --> Build[/csw:build]
+    Build --> Check{/csw:check?}
     Check -->|Optional| CheckRun[Validate]
     Check -->|Skip| Ship
     CheckRun --> Ship
-    Ship[/ship] --> Merge(<merge PR>)
+    Ship[/csw:ship] --> Merge(<merge PR>)
     Merge --> Next([Next Feature])
     Next --> Spec
 ```
 
 **The cycle**:
-1. **([spec] | `<spec>`)** - Create feature spec (tool-assisted or manual)
-2. **plan** - Generate implementation plan
-3. **build** - Implement the feature
-4. **[check]** - Validate (optional: tests, lint, types, build)
-5. **ship** - Create PR
+1. **([csw:spec] | `<spec>`)** - Create feature spec (tool-assisted or manual)
+2. **csw:plan** - Generate implementation plan
+3. **csw:build** - Implement the feature
+4. **[csw:check]** - Validate (optional: tests, lint, types, build)
+5. **csw:ship** - Create PR
 6. **`<merge>`** - Merge the PR (manual)
-7. **[cleanup]** - Clean up shipped features (optional solo dev tool)
-8. **repeat** - Start next feature
+7. **repeat** - Start next feature (cleanup happens automatically at start of `/csw:spec`)
 
 ## Workflow vs History
 
@@ -293,13 +293,7 @@ CSW focuses on *current* work, not completed work.
 - **Git + GitHub PRs** - Full history and record of shipped features
 - **log.md** - Local proof that `/build` succeeded
 
-Complete a feature? `/ship` creates the PR. After merging, the spec/ scaffolding can be cleaned up - it's already preserved in git history.
-
-**Optional `/cleanup` step**:
-- **Solo devs**: Use `/cleanup` for zero-friction transition to next feature (deletes merged branches and shipped specs)
-- **Team devs**: Handle cleanup manually per team conventions
-- **Skippable**: `/plan` still works without prior cleanup
-- Everything is backed up: specs in git history, branches in reflog, shipped features tracked in GitHub PRs
+Complete a feature? `/csw:ship` creates the PR. After merging, the spec/ scaffolding is automatically cleaned up at the start of the next `/csw:spec` cycle — it's already preserved in git history.
 
 ## Workflow Philosophy
 
@@ -331,40 +325,40 @@ Each workflow stage has different context requirements:
 **Rapid flow example**:
 ```bash
 # Exploration and specification
-/spec my-feature
+/csw:spec my-feature
 
-# Planning (keeps context from /spec conversation)
-/plan
+# Planning (keeps context from /csw:spec conversation)
+/csw:plan
 
 # Clear context, build from plan.md
 /clear
-/build
+/csw:build
 
-# Skip /check, go straight to ship (it re-validates anyway)
-/ship
+# Skip /csw:check, go straight to ship (it re-validates anyway)
+/csw:ship
 ```
 
-### When to Skip /check
+### When to Skip /csw:check
 
-**/build already validates everything** before allowing commits:
+**/csw:build already validates everything** before allowing commits:
 - Lint must be clean
 - Types must be correct
 - Tests must pass
 - Build must succeed
 
-**/ship runs /check automatically** before creating PR, so in rapid flow you can safely skip it.
+**/csw:ship runs /csw:check automatically** before creating PR, so in rapid flow you can safely skip it.
 
-**Run /check explicitly when:**
+**Run /csw:check explicitly when:**
 - You want a detailed readiness report before deciding to ship
-- Time has passed since /build (hours/days)
-- You made manual edits after /build completed
+- Time has passed since /csw:build (hours/days)
+- You made manual edits after /csw:build completed
 - Someone else is reviewing your work
 
-**Bottom line**: Trust /build's validation. In rapid flow, skip /check and go straight to /ship - it will re-validate everything anyway.
+**Bottom line**: Trust /csw:build's validation. In rapid flow, skip /csw:check and go straight to /csw:ship - it will re-validate everything anyway.
 
 ## Complexity Assessment & Scope Protection
 
-The `/plan` command includes automatic scope analysis to prevent scope creep and protect you from common pitfalls.
+The `/csw:plan` command includes automatic scope analysis to prevent scope creep and protect you from common pitfalls.
 
 ### The Problem We've All Experienced
 
@@ -378,7 +372,7 @@ The `/plan` command includes automatic scope analysis to prevent scope creep and
 
 ### The Solution: Automatic Complexity Scoring
 
-The `/plan` command automatically calculates a **complexity score (0-10)** based on:
+The `/csw:plan` command automatically calculates a **complexity score (0-10)** based on:
 
 - **File Impact**: How many files you're creating/modifying
 - **Subsystem Coupling**: How many different systems you're touching
@@ -393,7 +387,7 @@ The `/plan` command automatically calculates a **complexity score (0-10)** based
 
 ### How It Works
 
-When complexity >= 6, `/plan` will:
+When complexity >= 6, `/csw:plan` will:
 
 1. **Show detailed complexity breakdown** with specific factors
 2. **Optionally generate phase breakdown** if you want to see the split
@@ -489,12 +483,14 @@ After initialization, your project will have:
 
 ```
 your-project/
+├── .claude/
+│   ├── skills/csw/SKILL.md    # Autonomous discovery
+│   └── commands/csw:*.md      # Slash commands
 └── spec/
-    ├── active/           # Current features being developed
-    │   └── feature-name/
-    │       ├── spec.md   # Requirements
-    │       ├── plan.md   # Implementation plan (generated)
-    │       └── log.md    # Progress tracking (generated)
+    ├── feature-name/
+    │   ├── spec.md   # Requirements
+    │   ├── plan.md   # Implementation plan (generated)
+    │   └── log.md    # Progress tracking (generated)
     ├── stack.md          # Validation commands for your tech stack
     ├── template.md       # Spec template for new features
     └── README.md         # Workflow documentation
@@ -505,7 +501,7 @@ your-project/
 - `plan.md` - How you're building it
 - `log.md` - Proof that validation passed during `/build`
 
-The `/cleanup` command uses log.md to determine which specs have been completed and shipped. Don't gitignore these files.
+The cleanup preamble in `/csw:spec` uses log.md to determine which specs have been completed and shipped. Don't gitignore these files.
 
 ## Uninstalling
 
@@ -514,6 +510,7 @@ csw uninstall
 ```
 
 This removes:
+- Skill from `~/.claude/skills/csw/`
 - Claude commands from `~/.claude/commands/`
 - `~/.local/bin/csw` symlink
 
@@ -542,9 +539,9 @@ Your project `spec/` directories remain untouched. To remove the installation di
 - Run `csw init .` if spec directory is missing
 
 **Commands run out of order**
-- Recommended flow: `/spec` → `/plan` → `/build` → `/check` → `/ship`
-- If missing plan.md, run `/plan` first
-- If missing spec.md, create it or use `/spec`
+- Recommended flow: `/csw:spec` → `/csw:plan` → `/csw:build` → `/csw:check` → `/csw:ship`
+- If missing plan.md, run `/csw:plan` first
+- If missing spec.md, create it or use `/csw:spec`
 
 **Validation commands fail**
 - Missing `spec/stack.md`: Commands will error and ask you to run csw init
@@ -555,13 +552,13 @@ Your project `spec/` directories remain untouched. To remove the installation di
 ### Git Issues
 
 **Not on a feature branch**
-- `/plan` creates a branch automatically
+- `/csw:plan` creates a branch automatically
 - Or create manually: `git checkout -b feature/your-feature`
-- Never run `/ship` from main/master branch
+- Never run `/csw:ship` from main/master branch
 
 **Uncommitted changes block `/ship`**
 - Commit or stash changes first
-- `/ship` requires clean working directory
+- `/csw:ship` requires clean working directory
 - Check status: `git status`
 
 ### Monorepo Issues
@@ -613,7 +610,7 @@ Your project `spec/` directories remain untouched. To remove the installation di
 
 **Windows setup**
 - Use Git Bash or WSL2 terminal for all commands
-- Use forward slashes in paths: `/plan spec/active/feature/spec.md`
+- Use forward slashes in paths: `/csw:plan spec/feature/spec.md`
 - If using Git Bash: Right-click in directory → "Git Bash Here"
 
 **Symlink issues on Unix**
@@ -622,9 +619,9 @@ Your project `spec/` directories remain untouched. To remove the installation di
 
 ### PR Creation Issues
 
-**`/ship` doesn't create PR automatically**
+**`/csw:ship` doesn't create PR automatically**
 
-The `/ship` command tries multiple authentication methods in order:
+The `/csw:ship` command tries multiple authentication methods in order:
 1. GitHub CLI (if authenticated)
 2. GH_TOKEN environment variable
 3. Token from gh config
@@ -641,11 +638,11 @@ export GH_TOKEN=your_token_here
 # Add to ~/.bashrc or ~/.zshrc for persistence
 
 # Then re-run
-/ship spec/active/your-feature/
+/csw:ship spec/your-feature/
 ```
 
 **After creating PR manually**:
-Your PR is ready for review! The spec directory remains in your working tree until you run `/cleanup` after the PR is merged.
+Your PR is ready for review! The spec directory remains in your working tree until it's automatically cleaned up at the start of the next `/csw:spec` cycle.
 
 ### Getting Help
 
@@ -659,23 +656,11 @@ Still stuck?
 
 ### Upcoming Features
 
-**v0.3.0**:
-- Rewrite README.md and other docs as needed into my own voice
 - Additional stack presets (Rust, Ruby on Rails, Bun, etc.)
 - Enhanced error messages and validation feedback
-- Performance profiling and optimization
-- Investigate @ includes to DRY up slash commands (reduce repetition across command files)
-- Project maturity config to control documentation verbosity (dogfooding=minimal docs, production=migration guides)
-
-**Future**:
-- Convenience install script (curl-based one-liner for installation without checkout)
-- Package manager distribution (Homebrew, npm)
 - Integration tests for workflow validation
-- Video walkthrough tutorials
 - Community preset library (users share configs via PRs)
 - Improved monorepo workspace detection
-- Interactive preset creation wizard
-- Multi-preset composition for monorepos (specify multiple presets to compose into single stack.md)
 
 ## Credits
 
@@ -694,7 +679,7 @@ MIT License - See LICENSE file
 
 Issues and PRs welcome! This is an evolving methodology based on real-world usage.
 
-**Hacking on CSW?** Use `@commands/plan.md` instead of `/plan` for instant feedback without install/restart. See CONTRIBUTING.md for rapid iteration workflow.
+**Hacking on CSW?** Use `@commands/csw:plan.md` instead of `/csw:plan` for instant feedback without install/restart. See CONTRIBUTING.md for rapid iteration workflow.
 
 ## About TrakRF
 
