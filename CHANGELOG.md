@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `/csw:cleanup` command for post-merge housekeeping (branch cleanup, remote pruning, issue status check)
+- Linear issue detection in PR body/comments with optional MCP-powered closure
+- Squash merge support in `extract_pr_from_commit()` (matches `(#123)` suffix pattern)
+
 ## [0.1.0] - 2025-10-11
 
 > **Pre-release for dogfooding**: Initial implementation to be validated through real-world use before v1.0.0 public release.

@@ -25,7 +25,6 @@ Bootstrap Commands:
   init <dir> [preset] [--no-bootstrap-spec]
                          Initialize project with spec workflow
   uninstall              Remove CSW installation
-  migrate                Remove old un-namespaced command files
 
 Workflow Commands (also available as /csw:* slash commands):
   spec [name]            Create specification from conversation
@@ -33,6 +32,7 @@ Workflow Commands (also available as /csw:* slash commands):
   build                  Execute build with progress tracking
   check                  Run validation suite (test/lint/build)
   ship <feature>         Create PR and prepare for merge
+  cleanup [pr-number]    Post-merge housekeeping (branch cleanup, issue check)
 
 Examples:
   csw install
@@ -42,7 +42,6 @@ Examples:
   csw plan spec/auth-system/spec.md
   csw check
   csw ship auth-system
-  csw migrate
   csw uninstall
 
 For more information: https://github.com/trakrf/claude-spec-workflow
@@ -101,20 +100,6 @@ case "${1:-}" in
             fi
         done
         echo ""
-
-        # Detect old un-namespaced files
-        OLD_COMMANDS=("spec.md" "plan.md" "build.md" "check.md" "ship.md" "cleanup.md")
-        old_found=0
-        for old_cmd in "${OLD_COMMANDS[@]}"; do
-            if [ -f "$CLAUDE_COMMANDS_DIR/$old_cmd" ]; then
-                old_found=$((old_found + 1))
-            fi
-        done
-        if [ $old_found -gt 0 ]; then
-            echo ""
-            echo "⚠️  Found $old_found old un-namespaced command file(s)"
-            echo "   Run: csw migrate"
-        fi
 
         # Install csw CLI
         echo "🔧 Installing csw CLI..."
@@ -478,41 +463,10 @@ case "${1:-}" in
         echo "✅ Uninstall complete!"
         exit 0
         ;;
-    spec|plan|build|check|ship)
+    spec|plan|build|check|ship|cleanup)
         COMMAND="$1"
         shift
         exec "$SCRIPT_DIR/$COMMAND.sh" "$@"
-        ;;
-    cleanup)
-        # Deprecation — delegate to script which prints notice
-        exec "$SCRIPT_DIR/cleanup.sh"
-        ;;
-    migrate)
-        echo "🔄 Migrating Claude Spec Workflow"
-        echo ""
-
-        CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
-        OLD_COMMANDS=("spec.md" "plan.md" "build.md" "check.md" "ship.md" "cleanup.md")
-        removed=0
-
-        for cmd in "${OLD_COMMANDS[@]}"; do
-            cmd_path="$CLAUDE_COMMANDS_DIR/$cmd"
-            if [ -f "$cmd_path" ]; then
-                rm "$cmd_path"
-                echo "   ✓ Removed old $cmd"
-                removed=$((removed + 1))
-            fi
-        done
-
-        if [ $removed -eq 0 ]; then
-            echo "ℹ️  No old command files found"
-        else
-            echo ""
-            echo "✅ Removed $removed old command file(s)"
-        fi
-        echo ""
-        echo "💡 Next: Run 'csw install' to install new namespaced commands"
-        exit 0
         ;;
     help|--help|-h)
         usage
