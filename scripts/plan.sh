@@ -4,6 +4,7 @@ set -e
 SCRIPT_DIR="$(dirname "$0")"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/git.sh"
+source "$SCRIPT_DIR/lib/cleanup.sh"
 
 # /plan command - Git setup and planning workflow
 # Handles branch creation/renaming and commits planning artifacts
@@ -109,6 +110,9 @@ main() {
         error "❌ Spec file not found: $spec_file"
         exit 1
     fi
+
+    # Clean completed specs from previous cycle (same as /csw:spec preamble)
+    cleanup_completed_specs || true
 
     setup_feature_branch "$spec_file"
     commit_planning_artifacts "$spec_file"

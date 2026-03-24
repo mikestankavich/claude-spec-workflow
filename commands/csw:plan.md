@@ -39,6 +39,11 @@ The user will provide the path to a specification file (e.g., `spec/auth/spec.md
 
 ## Process
 
+0. **Cleanup Preamble** (automatic via `csw plan`)
+   - Clean completed specs from previous cycle (directories containing `log.md`)
+   - Skips `spec/backlog/`
+   - This runs automatically when invoked via CLI — same behavior as `/csw:spec`
+
 1. **Load Philosophy**
    - **First: Read `spec/README.md`** to understand workflow standards
    - This ensures consistency with project methodology
