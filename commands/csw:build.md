@@ -29,7 +29,7 @@ Do NOT treat validation as optional. These are blocking requirements.
 ---
 
 ## Input
-The user will provide the path to a feature directory (e.g., `spec/active/auth/`).
+The user will provide the path to a feature directory (e.g., `spec/auth/`).
 
 ## Process
 
@@ -46,7 +46,7 @@ The user will provide the path to a feature directory (e.g., `spec/active/auth/`
       - Use the appropriate workspace section from spec/stack.md
 
 2. **Initialize Progress Log**
-   Create/append to `spec/active/{feature}/log.md`:
+   Create/append to `spec/{feature}/log.md`:
    ```markdown
    # Build Log: {Feature Name}
 
@@ -212,7 +212,7 @@ The user will provide the path to a feature directory (e.g., `spec/active/auth/`
    Failed: {Y}
    Duration: {time}
    
-   Ready for /check: {YES/NO}
+   Ready for /csw:check: {YES/NO}
    ```
 
 ## VALIDATION GATES (MANDATORY - NOT OPTIONAL)
@@ -279,7 +279,7 @@ Final report:
 🏗️ Build Summary for {feature}
 ✅ Tasks completed: {X}/{N}
 ⚠️  Issues encountered: {count}
-📋 Next: Run /check for pre-release validation
+📋 Next: Run /csw:check for pre-release validation
 ```
 
 ## Execution

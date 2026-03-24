@@ -13,24 +13,24 @@ This system combines the best practices from Context Engineering (Cole Medin), 3
 
 2. **Generate implementation plan**
    ```
-   /plan my-feature
-   # or just: /plan (auto-detects if only one spec)
+   /csw:plan my-feature
+   # or just: /csw:plan (auto-detects if only one spec)
    ```
 
 3. **Build the feature**
    ```
-   /build
+   /csw:build
    # Auto-detects the spec with plan.md
    ```
 
 4. **Validate readiness**
    ```
-   /check
+   /csw:check
    ```
 
 5. **Ship it**
    ```
-   /ship
+   /csw:ship
    # Auto-detects the spec ready to ship
    ```
 
@@ -61,9 +61,9 @@ spec/
 
 **Note**: Organize specs however makes sense for your project. The system supports arbitrary nesting after `spec/`.
 
-**Optional**: Use `spec/backlog/` for future specs that aren't ready to work on yet. Move them to `spec/` when ready to `/plan`.
+**Optional**: Use `spec/backlog/` for future specs that aren't ready to work on yet. Move them to `spec/` when ready to `/csw:plan`.
 
-**Note**: The slash commands (`/plan`, `/build`, `/check`, `/ship`, `/spec`) are installed globally in Claude's commands directory, not in your project.
+**Note**: The slash commands (`/csw:plan`, `/csw:build`, `/csw:check`, `/csw:ship`, `/csw:spec`) are installed via `csw install` (global) or `csw init` (project scope).
 
 ## Philosophy
 
@@ -103,42 +103,37 @@ Final validation and PR preparation:
 
 | Command | Purpose | Notes |
 |---------|---------|-------|
-| `/plan` | Generate implementation plan | Auto-detects spec or accepts fragment |
-| `/build` | Execute implementation | Validates continuously; full suite at end |
-| `/check` | Validate PR readiness (optional) | /ship runs this automatically |
-| `/ship` | Complete and ship | Creates PR; runs /check first |
+| `/csw:spec` | Create specification from conversation | Cleans completed specs first |
+| `/csw:plan` | Generate implementation plan | Auto-detects spec or accepts fragment |
+| `/csw:build` | Execute implementation | Validates continuously; full suite at end |
+| `/csw:check` | Validate PR readiness (optional) | /csw:ship runs this automatically |
+| `/csw:ship` | Complete and ship | Creates PR; runs /csw:check first |
 
-## Feature Lifecycle & Cleanup Workflow
+## Feature Lifecycle
 
 ### Linear History Workflow
 
 CSW uses **rebase workflow** (linear history), not merge commits.
 
-**When you run `/ship`**:
+**When you run `/csw:ship`**:
 1. Creates PR from feature branch
 2. Commits and pushes to remote
 3. PR is ready for review and merge
 
-**When you run `/cleanup` (after PR is merged)**:
-1. Syncs with main branch
-2. Deletes merged feature branches
-3. Creates `cleanup/merged` staging branch
-4. **DELETES** spec directories that have `log.md` (proof of completion)
-5. Commits the cleanup
+**When you start next feature (`/csw:spec`)**:
+1. Dirty-tree guard ensures clean working tree
+2. Completed specs (with `log.md`) are automatically deleted and committed
+3. Proceeds to create new spec
 
-**When you run `/plan` (next feature)**:
-1. Detects `cleanup/merged` branch and renames it to new feature name
-2. Or creates new feature branch from main
-3. Ready to start next feature
+### Automatic Cleanup
 
-### Cleanup = DELETE
+Cleanup is integrated into `/csw:spec`:
+1. Scans `spec/` for directories with `log.md` (proof of completion)
+2. Skips `spec/backlog/`
+3. **DELETES** completed spec directories
+4. Commits as "chore: clean completed specs from previous cycle"
 
-The `/cleanup` command deletes shipped specs from your working tree:
-1. Finds all spec directories with `log.md` files
-2. **DELETES** those spec directories (`spec/feature-name/`)
-3. Commits the deletion on `cleanup/merged` branch
-
-**Truth**: If a spec has `log.md`, it means `/build` succeeded and the feature is complete.
+**Truth**: If a spec has `log.md`, it means `/csw:build` succeeded and the feature is complete.
 
 **Source of record**: Use `gh pr list --state merged` to see shipped features. GitHub PRs are the canonical source of truth.
 
@@ -151,27 +146,15 @@ sequenceDiagram
     participant U as User
     participant F as Feature Branch
     participant M as Main
-    participant C as Cleanup Branch
 
-    U->>F: /build (creates log.md)
-    U->>F: /ship (creates PR)
+    U->>F: /csw:build (creates log.md)
+    U->>F: /csw:ship (creates PR)
     F->>F: Commit all changes
     F->>M: Merge PR
-    U->>C: /cleanup
-    C->>M: Sync with main
-    C->>C: Delete specs with log.md
-    C->>C: Create cleanup/merged branch
-    U->>C: /plan (new feature)
-    C->>F: Rename to feature branch
+    U->>M: /csw:spec (next feature)
+    M->>M: Auto-clean completed specs
+    M->>F: /csw:plan creates feature branch
 ```
-
-### Path Simplification
-
-Paths simplified from `spec/active/feature/` to `spec/feature/`:
-- Old: `spec/active/authentication/spec.md`
-- New: `spec/authentication/spec.md`
-
-**Rationale**: "active" is redundant because we DELETE specs when done (they're always active).
 
 ### Arbitrary Nesting
 
@@ -191,15 +174,15 @@ Commands accept fragments, not full paths:
 
 **Zero arguments** (auto-detect):
 ```bash
-/plan          # Auto-detects if only 1 spec exists
-/build         # Auto-detects if only 1 plan exists
+/csw:plan          # Auto-detects if only 1 spec exists
+/csw:build         # Auto-detects if only 1 plan exists
 ```
 
 **Fragment matching** (Claude fuzzy matches):
 ```bash
-/plan auth                    # Matches spec/auth/ or spec/frontend/auth/
-/plan frontend                # Matches spec/frontend/auth/
-/plan authentication          # Typo-tolerant, matches "auth"
+/csw:plan auth                    # Matches spec/auth/ or spec/frontend/auth/
+/csw:plan frontend                # Matches spec/frontend/auth/
+/csw:plan authentication          # Typo-tolerant, matches "auth"
 ```
 
 **How it works** (separation of concerns):
@@ -207,9 +190,9 @@ Commands accept fragments, not full paths:
 2. **Claude layer**: Fuzzy matches your fragment, handles disambiguation
 
 **Command-specific filtering**:
-- `/plan` → Looks for `spec.md` files (specs ready to plan)
-- `/build` → Looks for `plan.md` files (specs ready to build)
-- `/ship` → Looks for `plan.md` files (specs ready to ship)
+- `/csw:plan` → Looks for `spec.md` files (specs ready to plan)
+- `/csw:build` → Looks for `plan.md` files (specs ready to build)
+- `/csw:ship` → Looks for `plan.md` files (specs ready to ship)
 
 **Interactive disambiguation**: Multiple matches show numbered list:
 ```
@@ -225,12 +208,12 @@ You can respond with: `1`, `frontend`, or `the frontend one`.
 
 Solo development with single feature needs zero path arguments:
 ```bash
-/spec my-feature      # Create spec/my-feature/
-/plan                 # Auto-detect (only 1 spec)
-/build                # Auto-detect (only 1 plan)
-/ship                 # Auto-detect (only 1 plan)
+/csw:spec my-feature      # Create spec/my-feature/
+/csw:plan                 # Auto-detect (only 1 spec)
+/csw:build                # Auto-detect (only 1 plan)
+/csw:ship                 # Auto-detect (only 1 plan)
 # Merge PR
-/plan next-feature    # Cleans up my-feature, creates next-feature
+/csw:spec next-feature    # Cleans up my-feature, creates next-feature
 ```
 
 ## Best Practices
@@ -246,7 +229,7 @@ Solo development with single feature needs zero path arguments:
 - ❌ Mix multiple features in one spec
 - ❌ Skip validation steps
 - ❌ Ignore failing tests
-- ❌ Ship without running /check
+- ❌ Ship without running /csw:check
 - ❌ Leave console.logs in code
 
 ## Validation Standards
@@ -264,7 +247,7 @@ The specific commands depend on your tech stack. See `spec/stack.md` for your pr
 1. Features are developed on `feature/{name}` branches
 2. Linear history via rebase workflow (no merge commits)
 3. Each feature gets semantic commits
-4. Specs are cleaned up after merge (preserved in git history)
+4. Specs are cleaned up automatically (preserved in git history)
 5. Clean history with meaningful commit messages
 
 ## Troubleshooting
@@ -275,7 +258,7 @@ The specific commands depend on your tech stack. See `spec/stack.md` for your pr
 - Re-run validation
 
 **Can't ship?**
-- Run `/check` for detailed report
+- Run `/csw:check` for detailed report
 - Fix all critical issues
 - Try again
 

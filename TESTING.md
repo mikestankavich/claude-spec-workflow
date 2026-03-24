@@ -16,14 +16,15 @@ cd claude-spec-workflow
 ```
 
 **Expected:**
-- Commands copied to `~/.claude/commands/`
+- Skill installed to `~/.claude/skills/csw/SKILL.md`
+- Commands (`csw:*.md`) copied to `~/.claude/commands/`
 - `~/.local/bin/csw` symlink created
 - Success message displayed
-- All commands listed (spec, plan, build, check, ship, cleanup)
 
 **Verify:**
 ```bash
-ls -la ~/.claude/commands/ | grep -E "(spec|plan|build|check|ship)\.md"
+ls -la ~/.claude/skills/csw/SKILL.md
+ls -la ~/.claude/commands/ | grep "csw:"
 ```
 
 ### Test 2: Re-installation (Idempotency)
@@ -40,14 +41,28 @@ csw uninstall
 ```
 
 **Expected:**
-- All commands removed from `~/.claude/commands/`
+- Skill directory `~/.claude/skills/csw/` removed
+- All `csw:*.md` commands removed from `~/.claude/commands/`
+- Old un-namespaced files removed if present
 - `~/.local/bin/csw` symlink removed
 - Success message with count
 - No errors if already uninstalled
 
+### Test 4: Migration
+```bash
+# First install old-style commands (simulate pre-0.4.0)
+# Then run:
+csw migrate
+```
+
+**Expected:**
+- Old command files removed (`spec.md`, `plan.md`, `build.md`, `check.md`, `ship.md`, `cleanup.md`)
+- Reports count of removed files
+- Suggests running `csw install` next
+
 ## Project Initialization Tests
 
-### Test 4: Initialize New Project
+### Test 5: Initialize New Project
 ```bash
 mkdir /tmp/test-project
 cd /tmp/test-project
@@ -56,18 +71,18 @@ csw init .
 ```
 
 **Expected:**
+- `.claude/skills/csw/SKILL.md` installed
+- `.claude/commands/csw:*.md` installed
 - `spec/` directory created
-- `spec/active/` subdirectory exists
-- `spec/SHIPPED.md` file created
 - `spec/template.md`, `spec/stack.md`, `spec/README.md` copied
 - `spec/bootstrap/` created with validation spec
 - `spec/csw` symlink created
-- `.gitignore` updated (if exists)
 
 **Verify:**
 ```bash
+ls -la .claude/skills/csw/
+ls -la .claude/commands/
 ls -la spec/
-cat .gitignore | grep "spec/active/\*/log.md"
 ```
 
 ### Test 6: Initialize with Different Preset
@@ -106,77 +121,79 @@ csw init . invalid-preset
 
 ## Command Workflow Tests
 
-### Test 8: /spec Command
+### Test 8: /csw:spec Command
 In Claude Code:
 ```
-/spec test-feature
+/csw:spec test-feature
 
 [Have a brief conversation about a simple feature]
 ```
 
 **Expected:**
+- Dirty-tree guard checks for uncommitted changes
+- Completed specs cleaned automatically
 - Claude analyzes conversation
 - Generates draft specification
 - Asks for confirmation
-- Creates `spec/active/test-feature/spec.md`
+- Creates `spec/test-feature/spec.md`
 
 **Verify:**
 ```bash
-cat spec/active/test-feature/spec.md
+cat spec/test-feature/spec.md
 ```
 
-### Test 9: /plan Command
+### Test 9: /csw:plan Command
 ```
-/plan spec/active/test-feature/spec.md
+/csw:plan spec/test-feature/spec.md
 ```
 
 **Expected:**
 - Claude reads the spec
 - Asks clarifying questions
 - Generates implementation plan
-- Creates `spec/active/test-feature/plan.md`
+- Creates `spec/test-feature/plan.md`
 - Creates feature branch
 - Commits plan
 
 **Verify:**
 ```bash
-cat spec/active/test-feature/plan.md
+cat spec/test-feature/plan.md
 git branch | grep "feature/test-feature"
 ```
 
-### Test 10: /build Command
+### Test 10: /csw:build Command
 ```
-/build spec/active/test-feature/
+/csw:build spec/test-feature/
 ```
 
 **Expected:**
 - Loads spec and plan
 - Executes tasks sequentially
-- Creates `spec/active/test-feature/log.md`
+- Creates `spec/test-feature/log.md`
 - Runs validation after each change
 - Updates log with progress
 
 **Verify:**
 ```bash
-cat spec/active/test-feature/log.md
+cat spec/test-feature/log.md
 ```
 
-### Test 11: /check Command (No Stack Config)
+### Test 11: /csw:check Command (No Stack Config)
 In a project without `spec/stack.md`:
 ```
-/check
+/csw:check
 ```
 
 **Expected:**
-- Error message: "❌ Stack not configured"
+- Error message: "Stack not configured"
 - Suggests running csw init with preset
 - Shows available presets
 - Does not proceed without stack.md
 
-### Test 12: /check Command (With Stack Config)
+### Test 12: /csw:check Command (With Stack Config)
 In a project with `spec/stack.md`:
 ```
-/check
+/csw:check
 ```
 
 **Expected:**
@@ -185,39 +202,68 @@ In a project with `spec/stack.md`:
 - Shows comprehensive validation report
 - Indicates PR readiness status
 
-### Test 13: /ship Command
+### Test 13: /csw:ship Command
 ```
-/ship spec/active/test-feature/
+/csw:ship spec/test-feature/
 ```
 
 **Expected:**
-- Runs `/check` first
-- Updates `spec/SHIPPED.md`
-- Archives feature directory
+- Runs `/csw:check` first
 - Commits changes
 - Pushes to remote
 - Creates pull request (or provides instructions)
 
 **Verify:**
 ```bash
-cat spec/SHIPPED.md
-ls spec/active/ | grep test-feature  # Should NOT exist
 git log -1
 ```
 
+### Test 14: Dirty-tree Guard
+With uncommitted changes:
+```bash
+echo "test" > /tmp/test-project/dirty-file.txt
+git add dirty-file.txt
+csw spec new-feature
+```
+
+**Expected:**
+- Error: "Uncommitted changes detected"
+- Does not proceed to spec creation
+
+### Test 15: Automatic Cleanup at Spec Start
+With a completed spec (has log.md) from a previous cycle:
+```bash
+csw spec next-feature
+```
+
+**Expected:**
+- Completed specs (with log.md) are deleted automatically
+- Commit created: "chore: clean completed specs from previous cycle"
+- Then proceeds to create new spec
+
+### Test 16: Cleanup Deprecation
+```bash
+csw cleanup
+```
+
+**Expected:**
+- Warning: "/cleanup is deprecated"
+- Message about cleanup being integrated into /csw:spec
+- Exits cleanly (no error)
+
 ## Edge Case Tests
 
-### Test 14: Missing spec/ Directory
-Run `/plan` in project without spec/ directory.
+### Test 17: Missing spec/ Directory
+Run `/csw:plan` in project without spec/ directory.
 
 **Expected:**
 - Clear error message
 - Suggests running csw init
 - Provides correct usage
 
-### Test 15: Invalid Spec Path
+### Test 18: Invalid Spec Path
 ```
-/plan spec/active/nonexistent/spec.md
+/csw:plan spec/nonexistent/spec.md
 ```
 
 **Expected:**
@@ -225,17 +271,17 @@ Run `/plan` in project without spec/ directory.
 - Shows path that was tried
 - Suggests checking path
 
-### Test 16: Out-of-Order Commands
-Try `/build` before `/plan`.
+### Test 19: Out-of-Order Commands
+Try `/csw:build` before `/csw:plan`.
 
 **Expected:**
 - Error or warning about missing plan
-- Suggests running /plan first
+- Suggests running /csw:plan first
 
-### Test 17: Workspace Detection (Monorepo)
+### Test 20: Workspace Detection (Monorepo)
 In monorepo with workspace in spec metadata:
 ```
-/build spec/active/backend-feature/
+/csw:build spec/backend-feature/
 ```
 
 **Expected:**
@@ -245,17 +291,17 @@ In monorepo with workspace in spec metadata:
 
 ## Cross-Platform Tests
 
-### Test 18: Windows Path Handling
+### Test 21: Windows Path Handling
 On Windows (Git Bash), test with forward slashes:
 ```
-/plan spec/active/test-feature/spec.md
+/csw:plan spec/test-feature/spec.md
 ```
 
 **Expected:**
 - Commands work correctly in Git Bash
 - Forward slashes handled properly
 
-### Test 19: Symlink Handling (Unix)
+### Test 22: Symlink Handling (Unix)
 ```bash
 # Test that csw resolves symlinks correctly
 ln -s ~/claude-spec-workflow/csw ~/test-csw
@@ -265,29 +311,19 @@ ln -s ~/claude-spec-workflow/csw ~/test-csw
 **Expected:**
 - Installation works correctly
 - csw resolves symlinks and finds its home directory
-- Commands installed to ~/.claude/commands/
+- Skill and commands installed correctly
 
-## Performance Tests
-
-### Test 20: Large Specification
-Create spec with 20+ requirements and complex architecture.
-
-**Expected:**
-- `/plan` generates comprehensive plan
-- Handles large context without issues
-- All tasks properly numbered
-
-### Test 21: Long-Running Build
-Create feature requiring 10+ file changes.
+### Test 23: Version
+```bash
+csw --version
+```
 
 **Expected:**
-- Progress log updated incrementally
-- Validation runs after each change
-- Can resume if interrupted
+- Outputs `csw 0.4.0` (reads from VERSION file)
 
 ## Validation Tests
 
-### Test 22: Preset Configuration Accuracy
+### Test 24: Preset Configuration Accuracy
 For each preset, verify commands are correct:
 
 ```bash
@@ -301,7 +337,7 @@ npm test  # Should work
 
 Repeat for all presets with appropriate projects.
 
-### Test 23: Monorepo Configuration
+### Test 25: Monorepo Configuration
 ```bash
 cd monorepo-project
 csw init . monorepo-go-react
@@ -316,7 +352,7 @@ csw init . monorepo-go-react
 
 ## Regression Tests
 
-### Test 24: Existing Features Still Work
+### Test 26: Existing Features Still Work
 After any changes, verify:
 - All installation scripts work
 - All commands execute
@@ -325,14 +361,19 @@ After any changes, verify:
 
 ## Test Checklist Summary
 
-- [ ] Unix installation works
+- [ ] Unix installation works (skill + commands)
 - [ ] Windows installation works
-- [ ] Uninstallation works
-- [ ] Project initialization works
+- [ ] Uninstallation removes skill + commands
+- [ ] Migration removes old files
+- [ ] Project initialization creates `.claude/` layout
 - [ ] Bootstrap spec generation works
 - [ ] Fuzzy preset matching works
 - [ ] Stack configuration works
-- [ ] All commands execute successfully (spec, plan, build, check, ship, cleanup)
+- [ ] All commands execute successfully (csw:spec, csw:plan, csw:build, csw:check, csw:ship)
+- [ ] Dirty-tree guard rejects dirty working tree
+- [ ] Cleanup runs at spec start
+- [ ] Cleanup deprecation notice works
+- [ ] Version reads from VERSION file
 - [ ] Error handling is clear
 - [ ] Cross-platform compatibility verified
 - [ ] Presets are accurate

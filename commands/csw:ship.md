@@ -29,7 +29,7 @@ Do NOT treat validation as optional. These are blocking requirements.
 ---
 
 ## Input
-The user will provide the path to a feature directory (e.g., `spec/active/auth/`).
+The user will provide the path to a feature directory (e.g., `spec/auth/`).
 
 ## Process
 
@@ -220,7 +220,7 @@ The user will provide the path to a feature directory (e.g., `spec/active/auth/`
    - Only try next method if current one fails
    - PR creation completes the ship workflow
 
-   **Note**: The spec directory (`spec/{feature}/`) remains in place through PR review. It will be cleaned up by `/cleanup` after the PR is merged.
+   **Note**: The spec directory (`spec/{feature}/`) remains in place through PR review. It will be cleaned up automatically at the start of the next `/csw:spec` cycle.
 
 ## Validation Gates Before Ship
 
@@ -294,15 +294,15 @@ These are MANDATORY gates that block shipping:
 ✅ Tests must pass
 ✅ Build must succeed
 
-Run /check to see full report
-Fix all BLOCKING issues then try /ship again
+Run /csw:check to see full report
+Fix all BLOCKING issues then try /csw:ship again
 ```
 
 ## Error Handling
 - If uncommitted changes: Prompt to commit or stash first
 - If on main branch: Refuse to ship, must be on feature branch
-- If /check BLOCKING GATES fail: Show specific failures and ABORT (cannot ship)
-- If /check has warnings only: Show warnings but allow shipping
+- If /csw:check BLOCKING GATES fail: Show specific failures and ABORT (cannot ship)
+- If /csw:check has warnings only: Show warnings but allow shipping
 - If no specs found: Error with path tried
 
 **Remember**: BLOCKING GATES are not negotiable. Fix them before shipping.

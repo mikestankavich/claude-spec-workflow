@@ -13,8 +13,5 @@ Thumbs.db
 # Testing
 .spec/
 
-# Spec workflow logs
-spec/active/*/log.md
-
 # Local environment (secrets/local config)
 .env.local
