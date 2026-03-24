@@ -240,6 +240,7 @@ report_github_issues() {
     issue_numbers=$(echo "$pr_body" | grep -oiE '(closes|fixes|resolves)\s+#[0-9]+' | grep -oE '[0-9]+' || true)
     [[ -z "$issue_numbers" ]] && return 0
 
+    local open_issues=""
     echo ""
     echo "GitHub Issues:"
     while IFS= read -r issue_num; do
@@ -250,9 +251,16 @@ report_github_issues() {
         if [[ "$issue_state" == "CLOSED" ]]; then
             echo "  CLOSED #$issue_num: $issue_title"
         else
-            echo "  $issue_state #$issue_num: $issue_title"
+            echo "  OPEN #$issue_num: $issue_title"
+            open_issues="$open_issues $issue_num"
         fi
     done <<< "$issue_numbers"
+
+    open_issues=$(echo "$open_issues" | xargs)
+    if [[ -n "$open_issues" ]]; then
+        echo ""
+        echo "OPEN_GITHUB_ISSUES=$open_issues"
+    fi
 }
 
 detect_linear_issues() {
