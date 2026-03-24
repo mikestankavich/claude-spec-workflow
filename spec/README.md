@@ -108,6 +108,7 @@ Final validation and PR preparation:
 | `/csw:build` | Execute implementation | Validates continuously; full suite at end |
 | `/csw:check` | Validate PR readiness (optional) | /csw:ship runs this automatically |
 | `/csw:ship` | Complete and ship | Creates PR; runs /csw:check first |
+| `/csw:cleanup` | Post-merge housekeeping | Cleans branches, checks issues |
 
 ## Feature Lifecycle
 
@@ -151,6 +152,8 @@ sequenceDiagram
     U->>F: /csw:ship (creates PR)
     F->>F: Commit all changes
     F->>M: Merge PR
+    U->>M: /csw:cleanup (branch cleanup, issue check)
+    M->>M: Delete merged branch, prune refs
     U->>M: /csw:spec (next feature)
     M->>M: Auto-clean completed specs
     M->>F: /csw:plan creates feature branch

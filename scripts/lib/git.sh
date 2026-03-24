@@ -69,6 +69,13 @@ extract_pr_from_commit() {
         echo "${BASH_REMATCH[1]}"
         return 0
     fi
+
+    # Extract PR number from squash merge "some message (#123)"
+    if [[ "$message" =~ \(#([0-9]+)\)$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+
     return 1
 }
 

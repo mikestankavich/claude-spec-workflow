@@ -16,6 +16,7 @@ Specification-driven development workflow for Claude Code. Guides features from 
 3. **Build** (`/csw:build`) — Execute plan with continuous validation gates
 4. **Check** (`/csw:check`) — Pre-release validation audit (optional, /ship runs this)
 5. **Ship** (`/csw:ship`) — Commit, push, and create pull request
+6. **Cleanup** (`/csw:cleanup`) — Post-merge branch cleanup and issue check
 
 ## Quick Start
 
@@ -24,6 +25,7 @@ Specification-driven development workflow for Claude Code. Guides features from 
 /csw:plan               # Generate implementation plan
 /csw:build              # Build with validation gates
 /csw:ship               # Ship and create PR
+/csw:cleanup            # Clean up after merge
 ```
 
 ## Key Concepts
@@ -35,4 +37,4 @@ Specification-driven development workflow for Claude Code. Guides features from 
 
 ## Terminal Usage
 
-All commands also work via CLI: `csw spec`, `csw plan`, `csw build`, `csw check`, `csw ship`
+All commands also work via CLI: `csw spec`, `csw plan`, `csw build`, `csw check`, `csw ship`, `csw cleanup`

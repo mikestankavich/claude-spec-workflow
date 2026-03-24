@@ -245,14 +245,15 @@ The system uses workspace-specific validation commands from `spec/stack.md`:
 | `/csw:build` | **Execute** - Implement the plan with continuous validation | After reviewing and approving the plan |
 | `/csw:check` | **Validate** - Comprehensive pre-ship audit (optional) | For detailed readiness report or pre-ship review |
 | `/csw:ship` | **Finalize** - Commit, push, create PR (runs /csw:check automatically) | When ready to merge |
+| `/csw:cleanup` | **Clean up** - Post-merge branch cleanup + issue check | After merging PR |
 
-All commands also work via CLI: `csw spec`, `csw plan`, `csw build`, `csw check`, `csw ship`.
+All commands also work via CLI: `csw spec`, `csw plan`, `csw build`, `csw check`, `csw ship`, `csw cleanup`.
 
 ## Feature Lifecycle
 
 CSW supports a complete feature development cycle:
 
-([csw:spec] | `<spec>`) → csw:plan → csw:build → [csw:check] → csw:ship → `<merge>` → repeat
+([csw:spec] | `<spec>`) → csw:plan → csw:build → [csw:check] → csw:ship → `<merge>` → [csw:cleanup] → repeat
 
 **Legend**:
 - [brackets] - Optional CSW command
@@ -272,7 +273,10 @@ flowchart LR
     Check -->|Skip| Ship
     CheckRun --> Ship
     Ship[/csw:ship] --> Merge(<merge PR>)
-    Merge --> Next([Next Feature])
+    Merge --> Cleanup{/csw:cleanup?}
+    Cleanup -->|Optional| CleanupRun[Branch + issue cleanup]
+    Cleanup -->|Skip| Next
+    CleanupRun --> Next([Next Feature])
     Next --> Spec
 ```
 
@@ -283,7 +287,8 @@ flowchart LR
 4. **[csw:check]** - Validate (optional: tests, lint, types, build)
 5. **csw:ship** - Create PR
 6. **`<merge>`** - Merge the PR (manual)
-7. **repeat** - Start next feature (cleanup happens automatically at start of `/csw:spec`)
+7. **[csw:cleanup]** - Post-merge housekeeping (branch cleanup, issue check)
+8. **repeat** - Start next feature (spec cleanup happens automatically at start of `/csw:spec`)
 
 ## Workflow vs History
 
@@ -293,7 +298,7 @@ CSW focuses on *current* work, not completed work.
 - **Git + GitHub PRs** - Full history and record of shipped features
 - **log.md** - Local proof that `/build` succeeded
 
-Complete a feature? `/csw:ship` creates the PR. After merging, the spec/ scaffolding is automatically cleaned up at the start of the next `/csw:spec` cycle — it's already preserved in git history.
+Complete a feature? `/csw:ship` creates the PR. After merging, run `/csw:cleanup` to handle git housekeeping (delete branch, prune refs, check issues). The spec/ scaffolding is automatically cleaned up at the start of the next `/csw:spec` cycle — it's already preserved in git history.
 
 ## Workflow Philosophy
 

@@ -229,9 +229,73 @@ csw spec next-feature
 - Commit created: "chore: clean completed specs from previous cycle"
 - Then proceeds to create new spec
 
+### Test 16: /csw:cleanup from Feature Branch
+After merging a PR, while still on the feature branch:
+```
+/csw:cleanup
+```
+
+**Expected:**
+- Switches to main and pulls latest
+- Merged feature branch is deleted locally
+- Remote feature branch is deleted (if it exists)
+- Stale remote refs are pruned
+- GitHub issue status reported (if `gh` available)
+- Linear issues detected (if referenced in PR)
+
+**Verify:**
+```bash
+git branch  # Feature branch should be gone
+git branch --show-current  # Should be on main
+```
+
+### Test 17: /csw:cleanup from Main
+Already on main, no feature branch:
+```
+/csw:cleanup
+```
+
+**Expected:**
+- Pulls latest on main
+- Prunes stale remote refs
+- No branch deletion attempted
+- No errors
+
+### Test 18: /csw:cleanup with Explicit PR Number
+```
+/csw:cleanup 42
+```
+
+**Expected:**
+- Uses PR #42 for issue detection
+- Pulls main, prunes refs
+- Reports GitHub/Linear issues linked to PR #42
+
+### Test 19: /csw:cleanup with Unmerged Branch
+On a feature branch that has NOT been merged:
+```
+/csw:cleanup
+```
+
+**Expected:**
+- Switches to main and pulls
+- Warning: branch is not fully merged, skipping delete
+- Branch is NOT deleted (safety check)
+
+### Test 20: /csw:cleanup without gh CLI
+With `gh` not installed or not authenticated:
+```
+/csw:cleanup
+```
+
+**Expected:**
+- Git operations succeed (checkout, pull, prune)
+- GitHub issue check skipped gracefully (no error)
+- Linear issue detection skipped gracefully (no error)
+
 ## Edge Case Tests
 
-### Test 16: Missing spec/ Directory
+### Test 21: Missing spec/ Directory
 Run `/csw:plan` in project without spec/ directory.
 
 **Expected:**
@@ -239,7 +303,7 @@ Run `/csw:plan` in project without spec/ directory.
 - Suggests running csw init
 - Provides correct usage
 
-### Test 17: Invalid Spec Path
+### Test 22: Invalid Spec Path
 ```
 /csw:plan spec/nonexistent/spec.md
 ```
@@ -249,14 +313,14 @@ Run `/csw:plan` in project without spec/ directory.
 - Shows path that was tried
 - Suggests checking path
 
-### Test 18: Out-of-Order Commands
+### Test 23: Out-of-Order Commands
 Try `/csw:build` before `/csw:plan`.
 
 **Expected:**
 - Error or warning about missing plan
 - Suggests running /csw:plan first
 
-### Test 19: Workspace Detection (Monorepo)
+### Test 24: Workspace Detection (Monorepo)
 In monorepo with workspace in spec metadata:
 ```
 /csw:build spec/backend-feature/
@@ -269,7 +333,7 @@ In monorepo with workspace in spec metadata:
 
 ## Cross-Platform Tests
 
-### Test 20: Windows Path Handling
+### Test 25: Windows Path Handling
 On Windows (Git Bash), test with forward slashes:
 ```
 /csw:plan spec/test-feature/spec.md
@@ -279,7 +343,7 @@ On Windows (Git Bash), test with forward slashes:
 - Commands work correctly in Git Bash
 - Forward slashes handled properly
 
-### Test 21: Symlink Handling (Unix)
+### Test 26: Symlink Handling (Unix)
 ```bash
 # Test that csw resolves symlinks correctly
 ln -s ~/claude-spec-workflow/csw ~/test-csw
@@ -291,7 +355,7 @@ ln -s ~/claude-spec-workflow/csw ~/test-csw
 - csw resolves symlinks and finds its home directory
 - Skill and commands installed correctly
 
-### Test 22: Version
+### Test 27: Version
 ```bash
 csw --version
 ```
@@ -301,7 +365,7 @@ csw --version
 
 ## Validation Tests
 
-### Test 23: Preset Configuration Accuracy
+### Test 28: Preset Configuration Accuracy
 For each preset, verify commands are correct:
 
 ```bash
@@ -315,7 +379,7 @@ npm test  # Should work
 
 Repeat for all presets with appropriate projects.
 
-### Test 24: Monorepo Configuration
+### Test 29: Monorepo Configuration
 ```bash
 cd monorepo-project
 csw init . monorepo-go-react
@@ -330,7 +394,7 @@ csw init . monorepo-go-react
 
 ## Regression Tests
 
-### Test 25: Existing Features Still Work
+### Test 30: Existing Features Still Work
 After any changes, verify:
 - All installation scripts work
 - All commands execute
@@ -347,7 +411,7 @@ After any changes, verify:
 - [ ] Bootstrap spec generation works
 - [ ] Fuzzy preset matching works
 - [ ] Stack configuration works
-- [ ] All commands execute successfully (csw:spec, csw:plan, csw:build, csw:check, csw:ship)
+- [ ] All commands execute successfully (csw:spec, csw:plan, csw:build, csw:check, csw:ship, csw:cleanup)
 - [ ] Dirty-tree guard rejects dirty working tree
 - [ ] Cleanup runs at spec start
 - [ ] Cleanup deprecation notice works

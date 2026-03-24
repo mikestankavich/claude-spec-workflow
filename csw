@@ -32,6 +32,7 @@ Workflow Commands (also available as /csw:* slash commands):
   build                  Execute build with progress tracking
   check                  Run validation suite (test/lint/build)
   ship <feature>         Create PR and prepare for merge
+  cleanup [pr-number]    Post-merge housekeeping (branch cleanup, issue check)
 
 Examples:
   csw install
@@ -462,7 +463,7 @@ case "${1:-}" in
         echo "✅ Uninstall complete!"
         exit 0
         ;;
-    spec|plan|build|check|ship)
+    spec|plan|build|check|ship|cleanup)
         COMMAND="$1"
         shift
         exec "$SCRIPT_DIR/$COMMAND.sh" "$@"
