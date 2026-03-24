@@ -48,18 +48,6 @@ csw uninstall
 - Success message with count
 - No errors if already uninstalled
 
-### Test 4: Migration
-```bash
-# First install old-style commands (simulate pre-0.4.0)
-# Then run:
-csw migrate
-```
-
-**Expected:**
-- Old command files removed (`spec.md`, `plan.md`, `build.md`, `check.md`, `ship.md`, `cleanup.md`)
-- Reports count of removed files
-- Suggests running `csw install` next
-
 ## Project Initialization Tests
 
 ### Test 5: Initialize New Project
@@ -241,19 +229,9 @@ csw spec next-feature
 - Commit created: "chore: clean completed specs from previous cycle"
 - Then proceeds to create new spec
 
-### Test 16: Cleanup Deprecation
-```bash
-csw cleanup
-```
-
-**Expected:**
-- Warning: "/cleanup is deprecated"
-- Message about cleanup being integrated into /csw:spec
-- Exits cleanly (no error)
-
 ## Edge Case Tests
 
-### Test 17: Missing spec/ Directory
+### Test 16: Missing spec/ Directory
 Run `/csw:plan` in project without spec/ directory.
 
 **Expected:**
@@ -261,7 +239,7 @@ Run `/csw:plan` in project without spec/ directory.
 - Suggests running csw init
 - Provides correct usage
 
-### Test 18: Invalid Spec Path
+### Test 17: Invalid Spec Path
 ```
 /csw:plan spec/nonexistent/spec.md
 ```
@@ -271,14 +249,14 @@ Run `/csw:plan` in project without spec/ directory.
 - Shows path that was tried
 - Suggests checking path
 
-### Test 19: Out-of-Order Commands
+### Test 18: Out-of-Order Commands
 Try `/csw:build` before `/csw:plan`.
 
 **Expected:**
 - Error or warning about missing plan
 - Suggests running /csw:plan first
 
-### Test 20: Workspace Detection (Monorepo)
+### Test 19: Workspace Detection (Monorepo)
 In monorepo with workspace in spec metadata:
 ```
 /csw:build spec/backend-feature/
@@ -291,7 +269,7 @@ In monorepo with workspace in spec metadata:
 
 ## Cross-Platform Tests
 
-### Test 21: Windows Path Handling
+### Test 20: Windows Path Handling
 On Windows (Git Bash), test with forward slashes:
 ```
 /csw:plan spec/test-feature/spec.md
@@ -301,7 +279,7 @@ On Windows (Git Bash), test with forward slashes:
 - Commands work correctly in Git Bash
 - Forward slashes handled properly
 
-### Test 22: Symlink Handling (Unix)
+### Test 21: Symlink Handling (Unix)
 ```bash
 # Test that csw resolves symlinks correctly
 ln -s ~/claude-spec-workflow/csw ~/test-csw
@@ -313,7 +291,7 @@ ln -s ~/claude-spec-workflow/csw ~/test-csw
 - csw resolves symlinks and finds its home directory
 - Skill and commands installed correctly
 
-### Test 23: Version
+### Test 22: Version
 ```bash
 csw --version
 ```
@@ -323,7 +301,7 @@ csw --version
 
 ## Validation Tests
 
-### Test 24: Preset Configuration Accuracy
+### Test 23: Preset Configuration Accuracy
 For each preset, verify commands are correct:
 
 ```bash
@@ -337,7 +315,7 @@ npm test  # Should work
 
 Repeat for all presets with appropriate projects.
 
-### Test 25: Monorepo Configuration
+### Test 24: Monorepo Configuration
 ```bash
 cd monorepo-project
 csw init . monorepo-go-react
@@ -352,7 +330,7 @@ csw init . monorepo-go-react
 
 ## Regression Tests
 
-### Test 26: Existing Features Still Work
+### Test 25: Existing Features Still Work
 After any changes, verify:
 - All installation scripts work
 - All commands execute
