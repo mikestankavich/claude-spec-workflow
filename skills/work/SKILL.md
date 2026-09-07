@@ -206,7 +206,92 @@ An interactive run is autonomous from here too. The questions were asked in Step
 are answered, plan, execute, and validate the same way — do not turn the rest of the run into
 a series of confirmations.
 
+### When you notice something the plan does not cover — note it and keep going
+
+Adjacent breakage, a loose end, a bad assumption two files over, an
+acceptance item the plan missed: write it to a running list and carry on with the task in hand.
+Do not act on it here, and do not file it here. Step 6 disposes of the whole list at once.
+
+Collecting beats remembering. A pass that runs on recall dispositions whatever happens to still
+be in context when it runs, which is never the same set as what was actually found.
+
 ## Step 6: Validate
+
+### Before validating: dispose of what you found
+
+Absorbed work has to be validated by the run that absorbs it, so disposal comes first.
+
+Account for two things: **every acceptance item on the ledger**, and **every discovery Step 5
+collected**. An acceptance item nothing covers is a finding, and is disposed of here like any
+other.
+
+**The default is fold:**
+
+> **Could it reasonably be in scope? If yes, fold it in.** Spinning it out requires naming which
+> of the four reasons below applies. **If you cannot name one, you fold it in.**
+
+That is `csw:prep` Step 4's test turned around — *"if you can mark an option (Recommended), you
+have your answer; do not ask, decide"* — and it works the same way: being unable to name a
+reason is the answer, not a licence to defer.
+
+Absorption is free for exactly as long as the worktree is alive: context loaded, branch open,
+`validate` and `csw-gates` already wired, marginal cost of one more commit close to zero. Once
+the worktree is gone the same fix costs a full dispatch, review, merge and cleanup cycle,
+whether it rides a new ticket or a re-dispatch.
+
+**Four dispositions, and every one of them is recorded in the ledger:**
+
+| Disposition | When | Record |
+|---|---|---|
+| **Fold** | The default. Absorb it into this branch. | Its own commit, and a ledger row |
+| **Spin out** | One of the four reasons applies, and you have named it | A new ticket, and a ledger row naming the reason and the ticket |
+| **Drop** | Real, but not worth anyone's time — cosmetic, already known, superseded | A ledger row with the reason |
+| **Block** | The discovery stops *this* ticket | Step 9: the question on the ticket, and a draft PR |
+
+**Dropping is written down, never silent.** A finding judged not worth doing is a decision, and
+the next dispatch needs to see that it was taken — otherwise the same thing is rediscovered,
+re-triaged and re-filed on every run over that code. A dropped row costs one line and stops
+that.
+
+**The four spin-out reasons:**
+
+1. **It cannot be validated here.** It needs a gate, an environment, or hardware this branch's
+   `validate` cannot run.
+2. **It is blocked.** It needs a decision nobody is there to give, or work that has not landed.
+3. **It is outside this repo.** `csw:cleanup` Step 5 already searches for exactly these.
+4. **It is larger than the ticket carrying it.** The test is mechanical:
+   **would the pull request have to be retitled to describe the change?**
+   If yes, it is reason 4. That protects what the reason exists to protect — the reviewer's
+   headline — without reabsorbing everything the other three excluded.
+
+**Anything else is not on the list.** "It is a deletion", "it is risky", "it is not what I was
+asked for" are not reasons. A deletion inside the ticket's own declared scope is not a discovery
+at all — it is the work.
+
+Reason 2 and the **Block** disposition are not the same thing. Reason 2 means the *discovery*
+cannot proceed, so it becomes a ticket and this ticket carries on. Block means the discovery has
+stopped *this* ticket, so the run goes to Step 9.
+
+**Folding in means re-entering the chain, not patching around it.** An in-scope item the plan
+missed is a change to the spec, not a note on it. Absorbing anything beyond the trivial means
+going back through `writing-plans` → `executing-plans` → TDD with the item added, then returning
+here. Autonomous re-entry never includes brainstorming: Step 5 already skips it, and
+`superpowers:brainstorming` carries an approval gate nobody is awake to satisfy. **An autonomous
+dispatch that finds itself wanting to brainstorm has found a Step 9 stop, not another pass.**
+
+**Absorbed work gets its own commit**, exactly as an ADR does and for the same reason: rejecting
+it in review is then one revert rather than surgery on a diff someone wants to keep. That is
+what makes absorbing safe unattended — review stays the filter, and the filter stays cheap to
+operate.
+
+**Stop after three passes.** A pass is one disposal pass plus one re-entry into Step 5. On the
+fourth, absorption is over: everything still outstanding is spun out or dropped, and if an
+acceptance item is still uncovered the run goes to Step 9 as a draft naming it. The failure to
+design against is a dispatch that absorbs a discovery, whose absorption surfaces the next
+discovery, all night — a run that ends up its own ancestor. Natural termination is not a brake
+anyone can point at; a number is.
+
+Then validate.
 
 ```bash
 csw-config get validate            # run whatever this prints; empty means the repo declared none

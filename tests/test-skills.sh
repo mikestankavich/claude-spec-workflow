@@ -174,6 +174,39 @@ assert_contains "$work_step2" "never edits" \
 assert_contains "$work_step2" "only with a reason from the same four" \
   "work: the ledger cannot shrink silently"
 
+# --- work: mid-build discovery, collected at Step 5 and disposed at Step 6 ---
+#
+# Absorption is free only while the worktree is alive: context loaded, branch open, validate
+# and csw-gates already wired. A finding that travels to Step 8 instead arrives after the PR
+# is open, at the moment the reader's next move is merge — which is how one ticket becomes
+# three dispatch/review/merge/cleanup cycles.
+disposal_start='^## Step 6: Validate'
+disposal_end='^## Step 7: Commit and open the PR'
+assert_guards "$work" '^## Step 5: Do the work, autonomously' '^## Step 6: Validate' \
+  "note it and keep going" "work: Step 5 collects discoveries instead of acting on them"
+# Fold is the default and needs no justification; spinning out is what needs one. Stated the
+# other way round, the surrounding scope discipline wins and every finding becomes a ticket.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "If you cannot name one, you fold it in" "work: fold is the default disposition"
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "is not on the list" "work: the spin-out reasons are a closed list"
+# Reason 4 is the softest of the four and the one protecting review quality, so it carries a
+# mechanical test rather than a judgement call.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "would the pull request have to be retitled" "work: reason 4 has a mechanical test"
+# A dropped finding nobody wrote down is rediscovered, re-triaged and re-filed on every future
+# run over the same code.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "Dropping is written down" "work: drop is a first-class, recorded disposition"
+# Unbounded absorption in an unattended run is the hazard the default trades into. The loop
+# has to end on a number somebody can point at, not on a judgement about novelty.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "three passes" "work: absorption is capped"
+# Same argument as the ADR pass: its own commit means rejecting it is one revert rather than
+# surgery on a diff somebody wants to keep, which is what makes absorbing safe unattended.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "its own commit" "work: absorbed work is separately revertible"
+
 # --- work: the interactive modifier, and everything it does not change ---
 
 # The word has to be discoverable from the hint, or the only people who type it are the
