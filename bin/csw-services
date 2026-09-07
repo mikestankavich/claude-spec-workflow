@@ -128,7 +128,9 @@ def worktree_dir():
     working_dir names a path under here that no longer exists is provably a
     worktree CSW itself created and removed.
     """
-    configured = load_config().get("worktreeDir") or ".claude/worktrees"
+    # csw-config always supplies this key, defaults included; the literal is a
+    # belt-and-braces fallback and tracks csw-config's own default.
+    configured = load_config().get("worktreeDir") or ".worktrees"
     return os.path.realpath(os.path.join(repo_toplevel(), configured))
 
 

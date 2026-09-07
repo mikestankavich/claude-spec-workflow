@@ -64,4 +64,104 @@ if [ "$have_proc" = "1" ]; then
     "an empty result says so rather than printing nothing at all"
 fi
 
+# --- Arm 2: compose projects, by the label the runtime already keeps ---
+# A fake docker, because these assertions are about which containers get
+# selected, and a machine with a real docker would make the answer depend on
+# whatever happens to be running on it.
+fakebin=$(mktemp -d); TMPDIRS+=("$fakebin")
+repo2=$(make_repo)
+write_config "$repo2" <<'JSON'
+{ "worktreeDir": ".claude/worktrees" }
+JSON
+# The two worktrees are siblings under worktreeDir, which is the real shape --
+# one live, one already removed. Using the repo root as the live worktree would
+# have nested the dead one inside it and made the subtree match look like a bug.
+mkdir -p "$repo2/.claude/worktrees"
+live="$repo2/.claude/worktrees/feat+1260-live"
+mkdir -p "$live/backend"
+gone="$repo2/.claude/worktrees/fix+1253-already-removed"   # deliberately never created
+
+cat >"$fakebin/docker" <<EOF
+#!/usr/bin/env bash
+# Four containers: one from the worktree under test, one from a subdirectory of
+# it (a compose file under backend/ is still that worktree's), one carrying no
+# compose label at all, and one whose working_dir is a worktree that no longer
+# exists.
+if [ "\$1" = "ps" ]; then
+  printf '%s\t%s\t%s\t%s\t%s\n' "db"       "$live"          "timescaledb" "Up 10 hours" "0.0.0.0:5432->5432/tcp"
+  printf '%s\t%s\t%s\t%s\t%s\n' "api"      "$live/backend"  "backendapi"  "Up 9 hours"  "0.0.0.0:8080->8080/tcp"
+  printf '%s\t%s\t%s\t%s\t%s\n' "buildkit" ""               ""            "Up 3 days"   ""
+  printf '%s\t%s\t%s\t%s\t%s\n' "olddb"    "$gone"          "tra1253"     "Up 10 hours" "0.0.0.0:5433->5432/tcp"
+  exit 0
+fi
+printf 'fake docker: unexpected args: %s\n' "\$*" >&2
+exit 1
+EOF
+chmod +x "$fakebin/docker"
+wt2="$live"
+
+proj=$(CSW_SERVICES_DOCKER="$fakebin/docker" "$SERVICES" json "$wt2" | jq -c '[.composeProjects[].project]')
+assert_eq "$proj" '["backendapi","timescaledb"]' "compose projects rooted in the worktree, subdirectories included, are selected"
+case "$proj" in
+  *buildkit*)
+    assert_eq "unlabelled-container-selected" "not-selected" \
+      "a container with no worktree label is left alone" ;;
+  *) PASSES=$((PASSES + 1)) ;;
+esac
+case "$proj" in
+  *tra1253*)
+    assert_eq "other-worktree-container-selected" "not-selected" \
+      "a container from a different worktree is left alone" ;;
+  *) PASSES=$((PASSES + 1)) ;;
+esac
+
+# The human report names the container and its ports, so an unprompted teardown
+# stays reviewable.
+compose_report=$(CSW_SERVICES_DOCKER="$fakebin/docker" "$SERVICES" report "$wt2")
+assert_contains "$compose_report" "timescaledb" "the report names the compose project"
+assert_contains "$compose_report" "5432" "the report names the published port"
+
+# The orphan report: provably ours by origin, abandoned, and reported rather
+# than acted on -- nothing owns that worktree any more, so nothing may tear it
+# down on its own authority.
+orph=$(in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker" "$SERVICES" orphans)
+assert_contains "$orph" "tra1253" "an orphaned compose project under worktreeDir is reported"
+assert_contains "$orph" "no longer exists" "the orphan line says why it is an orphan"
+case "$orph" in
+  *timescaledb*)
+    assert_eq "live-worktree-reported-as-orphan" "not-reported" \
+      "a project whose worktree still exists is not an orphan" ;;
+  *) PASSES=$((PASSES + 1)) ;;
+esac
+assert_status 0 "reporting orphans exits 0" -- \
+  in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker" "$SERVICES" orphans
+assert_status 2 "orphans takes no arguments" -- \
+  in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker" "$SERVICES" orphans "$wt2"
+
+# A container outside worktreeDir is not an orphan however dead its directory
+# is: it is not provably CSW's, so it is somebody else's business.
+cat >"$fakebin/docker-elsewhere" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "ps" ] || exit 1
+printf '%s\t%s\t%s\t%s\t%s\n' "x" "/nonexistent/somewhere/else" "elsewhere" "Up 1 hour" ""
+EOF
+chmod +x "$fakebin/docker-elsewhere"
+elsewhere=$(in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker-elsewhere" "$SERVICES" orphans)
+assert_contains "$elsewhere" "no orphaned compose projects" \
+  "a dead working_dir outside worktreeDir is not reported as ours"
+
+# Docker present but not answering is "unknown", never "absent" -- csw-sweep
+# draws the same line between a clean sweep and a sweep that did not run.
+cat >"$fakebin/docker-down" <<'EOF'
+#!/usr/bin/env bash
+printf 'Cannot connect to the Docker daemon at unix:///var/run/docker.sock.\n' >&2
+exit 1
+EOF
+chmod +x "$fakebin/docker-down"
+down=$(in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker-down" "$SERVICES" report "$wt2")
+assert_contains "$down" "unknown, not absent" \
+  "a docker that will not answer is reported as unknown, not as nothing running"
+assert_status 0 "a docker that will not answer is not an error" -- \
+  in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker-down" "$SERVICES" report "$wt2"
+
 report
