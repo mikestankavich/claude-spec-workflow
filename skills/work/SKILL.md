@@ -69,12 +69,19 @@ exists, and nothing has been built yet. The ticket is not claimed at this point 
 because Step 2 is what sets it In Progress — which is the right outcome for a failure that is
 not the ticket's fault.
 
-Green is one line in the report, and the dispatch proceeds.
+Green is worth one line — say it passed, and proceed.
 
 **This is not a pre-run of the gate.** Its subject is the environment, not the change — a
 stale service, a held port, a dead dependency, a half-applied migration — so it is normally a
 much cheaper command than `validate`. Do not report a green baseline as evidence about the
 work; it says only that you started from a clean machine.
+
+Dispatched from `/csw:batch` there is **nobody to ask**, so return `failed` with the command
+and its output as the reason and let the loop record one row and move on. Do not fall into
+that skill's draft path: it is for a ticket whose work exists and did not reach merge-ready,
+and this ticket has no work at all. Every ticket in the batch will hit the same red baseline,
+and N identical rows naming one machine fault is the correct morning summary — not something
+to route around.
 
 A baseline may repair what it finds — sweeping a held port, restarting a stale daemon. That is
 it doing its job, not a side effect to avoid. `trackerCommand`'s read-only rule does not

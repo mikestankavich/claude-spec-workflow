@@ -181,6 +181,11 @@ else
   FAILURES=$((FAILURES + 1))
   printf 'FAIL work: Step 1.5 must come before Step 2, so a red baseline leaves the ticket unclaimed\n' >&2
 fi
+# A batch subagent has nobody to ask, and batch's own Step 6 answers "cannot proceed" with a
+# draft PR — the one thing Step 1.5 forbids, because at Step 1.5 there is no work to draft.
+# Without this, an unattended run opens an empty draft against a machine fault.
+assert_guards "$work" "$baseline_start" "$baseline_end" \
+  "nobody to ask" "work: Step 1.5 says what a batch subagent does with a red baseline"
 # Red flags are where an agent looks when it is about to rationalise its way past a step.
 assert_contains "$(sed -n '/^## Red flags/,$p' "$work")" "baseline" \
   "work: red flags catch a red baseline being worked around"
