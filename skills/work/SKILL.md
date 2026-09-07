@@ -185,6 +185,21 @@ harness cannot see. Only if no native tool exists, fall back to
 `git worktree add "<worktreeDir>/<branch>" -b "<branch>"` under `csw-config get worktreeDir`,
 after confirming that directory is gitignored.
 
+**Then check the branch name, because EnterWorktree may not have used the one you passed.**
+It derives its own — sanitising `/` and prefixing the result — so the branch can land as
+`worktree-<type>+<ticket>-<slug>` rather than the name `csw-ticket branch` printed:
+
+```bash
+git branch --show-current                       # what you actually got
+git branch -m "<the name csw-ticket branch printed>"
+```
+
+Rename it if it differs. The generated name is not cosmetic: trackers scan branch names for
+ticket ids, `csw:cleanup` finds and deletes branches by that name, and `branchPattern` is a
+configured convention that a silently-renamed branch quietly stops following. The worktree
+*directory* keeps whatever name the tool gave it, which is fine — it is gitignored and nothing
+matches on it.
+
 ## Step 5: Do the work, autonomously
 
 Run the superpowers chain in autonomous mode:

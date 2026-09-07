@@ -118,6 +118,12 @@ assert_guards "$work" '^## Step 6: Validate' '^## Step 7: Commit and open the PR
   "csw-gates" "work: runs diff-triggered gates"
 assert_guards "$work" '^## Step 4: Open an isolated workspace' '^## Step 5: Do the work' \
   "EnterWorktree" "work: prefers the native worktree tool"
+# EnterWorktree derives its own branch name — sanitising "/" and prefixing the result — so the
+# branch lands as worktree-<type>+<ticket>-<slug> rather than what csw-ticket branch printed.
+# Trackers scan branch names for ticket ids and csw:cleanup deletes branches by name, so the
+# generated name has to be restored rather than accepted.
+assert_guards "$work" '^## Step 4: Open an isolated workspace' '^## Step 5: Do the work' \
+  "git branch -m" "work: restores the generated branch name when the native tool renames it"
 assert_contains "$(cat "$work")" "--draft" "work: knows the draft-PR rule"
 assert_contains "$(cat "$work")" "Hold for review is a hard stop" "work: states the hard stop"
 assert_contains "$(cat "$work")" "No PR means Step 9, not Step 8" "work: Step 7 failures route to Step 9"
