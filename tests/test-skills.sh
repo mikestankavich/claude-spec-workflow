@@ -156,6 +156,24 @@ work_red_flags=$(sed -n '/^## Red flags/,$p' "$work")
 assert_contains "$work_red_flags" "prep" \
   "work: red flags catch a dispatch that ignores the prep comment"
 
+# --- work: the scope ledger ---
+#
+# The acceptance list is a coverage contract, and it has to exist on the ticket before the
+# worktree opens: a list written after the work is a list shaped by what got built, which is
+# the one thing it cannot be and still gate anything.
+assert_contains "$work_step2" '**CSW scope**' \
+  "work: Step 2 reads the scope ledger"
+assert_contains "$work_step2" "before Step 4 opens the worktree" \
+  "work: a derived acceptance list is posted before the worktree exists"
+# Brief and state are different artifacts. Prep supersedes its own comment and relies on being
+# its only author; a dispatch editing it breaks that and interleaves state with the brief.
+assert_contains "$work_step2" "never edits" \
+  "work: work does not write into prep's comment"
+# Scope legitimately changes mid-flight, and the amendment is the review point. A ledger that
+# can shrink silently is a hole wide enough to drop the original problem through.
+assert_contains "$work_step2" "only with a reason from the same four" \
+  "work: the ledger cannot shrink silently"
+
 # --- work: the interactive modifier, and everything it does not change ---
 
 # The word has to be discoverable from the hint, or the only people who type it are the

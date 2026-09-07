@@ -103,6 +103,60 @@ Nobody to ask is what makes an unanswered question a blocker.
 No prep comment is not a problem. Prep is optional, and a ticket without one is dispatched
 exactly as it always was.
 
+### Then read the scope ledger
+
+One more comment, prefixed `**CSW scope**`. It is this command's own, and it carries the
+ticket's coverage state rather than its brief:
+
+```markdown
+**CSW scope**
+
+## Acceptance
+Source: `**CSW prep**` comment | derived by `csw:work` (no prep comment)
+
+1. <item> — covered by <PR or commit> | not covered
+2. <item> — covered by #667
+
+## Discoveries
+| What | Disposition | Reason |
+|---|---|---|
+| <finding> | folded | — |
+| <finding> | spun out → #123 | outside this repo |
+| <finding> | dropped | superseded by item 2 |
+
+## Amendments
+- Item 4 removed — larger than the ticket carrying it; the PR title would no longer describe
+  the change.
+```
+
+The marker `**CSW scope**` is load-bearing and must be exact, for the same reason `**CSW prep**`
+is: Step 6 and `csw:cleanup` both search the comments for that string.
+
+- **A ledger exists — read it.** Its `## Acceptance` list is the coverage contract for this
+  dispatch. Its `## Discoveries` table is what earlier dispatches already disposed of, so
+  nothing there is rediscovered and nothing already dropped is quietly re-filed.
+- **No ledger, but a prep comment — copy its `## Acceptance` list into a new one**, marking the
+  source as the prep comment.
+- **Neither — derive the list from the description yourself**, mark it as derived, and post it.
+  Read the whole description, exactly as above: the ordering constraints live in the prose.
+
+**Post it before Step 4 opens the worktree.** A list written after the work is a list shaped by
+what got built, which is the one thing it cannot be and still gate anything.
+
+**`csw:work` never edits the `**CSW prep**` comment.** That marker is prep's — prep supersedes
+its own comment and relies on being its only author, and its "one comment, not a thread" rule
+exists so a human can tell prep's questions from prep's restatements of them. Brief and state
+are different artifacts, written by different actors at different times, and they get different
+comments.
+
+**One `**CSW scope**` comment per ticket, updated in place.** Several dispatches against one
+ticket — a draft, then a re-dispatch — amend the same comment rather than opening a second.
+
+**An acceptance item is amended or removed only with a reason from the same four** that Step 6
+uses to spin a discovery out, recorded under `## Amendments`, with the original item text left
+visible. Scope does change mid-flight, and the amendment is the review point — a ledger that
+can shrink silently is a hole wide enough to drop the original problem through.
+
 ## Step 3: Infer the change type
 
 From the ticket's labels and language, pick one conventional-commit type:
