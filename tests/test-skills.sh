@@ -101,6 +101,14 @@ fi
 # working as intended, and would only be the uniqueness rule under another name.
 # Present-inside-the-region is what makes a revert bite; that is the whole
 # contract.
+#
+# **A needle must not straddle a line wrap.** Both `assert_contains` and
+# `assert_guards` match against the file's text as written, so a phrase the skill
+# happens to break across two lines is not found — the assertion goes red against
+# prose that says exactly the right thing. The failure looks like a missing rule
+# and is actually a wrap, which is an expensive minute every time. Keep needles
+# short enough to survive reflowing, and where a long phrase is the thing worth
+# guarding, put it on its own line in the skill.
 
 # --- work: the hard stop and the tools it must reach for ---
 work="$SKILLS/work/SKILL.md"
@@ -110,6 +118,12 @@ assert_guards "$work" '^## Step 6: Validate' '^## Step 7: Commit and open the PR
   "csw-gates" "work: runs diff-triggered gates"
 assert_guards "$work" '^## Step 4: Open an isolated workspace' '^## Step 5: Do the work' \
   "EnterWorktree" "work: prefers the native worktree tool"
+# EnterWorktree derives its own branch name — sanitising "/" and prefixing the result — so the
+# branch lands as worktree-<type>+<ticket>-<slug> rather than what csw-ticket branch printed.
+# Trackers scan branch names for ticket ids and csw:cleanup deletes branches by name, so the
+# generated name has to be restored rather than accepted.
+assert_guards "$work" '^## Step 4: Open an isolated workspace' '^## Step 5: Do the work' \
+  "git branch -m" "work: restores the generated branch name when the native tool renames it"
 assert_contains "$(cat "$work")" "--draft" "work: knows the draft-PR rule"
 assert_contains "$(cat "$work")" "Hold for review is a hard stop" "work: states the hard stop"
 assert_contains "$(cat "$work")" "No PR means Step 9, not Step 8" "work: Step 7 failures route to Step 9"
@@ -155,6 +169,57 @@ assert_contains "$work_step2" "Step 9" \
 work_red_flags=$(sed -n '/^## Red flags/,$p' "$work")
 assert_contains "$work_red_flags" "prep" \
   "work: red flags catch a dispatch that ignores the prep comment"
+
+# --- work: the scope ledger ---
+#
+# The acceptance list is a coverage contract, and it has to exist on the ticket before the
+# worktree opens: a list written after the work is a list shaped by what got built, which is
+# the one thing it cannot be and still gate anything.
+assert_contains "$work_step2" '**CSW scope**' \
+  "work: Step 2 reads the scope ledger"
+assert_contains "$work_step2" "before Step 4 opens the worktree" \
+  "work: a derived acceptance list is posted before the worktree exists"
+# Brief and state are different artifacts. Prep supersedes its own comment and relies on being
+# its only author; a dispatch editing it breaks that and interleaves state with the brief.
+assert_contains "$work_step2" "never edits" \
+  "work: work does not write into prep's comment"
+# Scope legitimately changes mid-flight, and the amendment is the review point. A ledger that
+# can shrink silently is a hole wide enough to drop the original problem through.
+assert_contains "$work_step2" "only with a reason from the same four" \
+  "work: the ledger cannot shrink silently"
+
+# --- work: mid-build discovery, collected at Step 5 and disposed at Step 6 ---
+#
+# Absorption is free only while the worktree is alive: context loaded, branch open, validate
+# and csw-gates already wired. A finding that travels to Step 8 instead arrives after the PR
+# is open, at the moment the reader's next move is merge — which is how one ticket becomes
+# three dispatch/review/merge/cleanup cycles.
+disposal_start='^## Step 6: Validate'
+disposal_end='^## Step 7: Commit and open the PR'
+assert_guards "$work" '^## Step 5: Do the work, autonomously' '^## Step 6: Validate' \
+  "note it and keep going" "work: Step 5 collects discoveries instead of acting on them"
+# Fold is the default and needs no justification; spinning out is what needs one. Stated the
+# other way round, the surrounding scope discipline wins and every finding becomes a ticket.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "If you cannot name one, you fold it in" "work: fold is the default disposition"
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "is not on the list" "work: the spin-out reasons are a closed list"
+# Reason 4 is the softest of the four and the one protecting review quality, so it carries a
+# mechanical test rather than a judgement call.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "would the pull request have to be retitled" "work: reason 4 has a mechanical test"
+# A dropped finding nobody wrote down is rediscovered, re-triaged and re-filed on every future
+# run over the same code.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "Dropping is written down" "work: drop is a first-class, recorded disposition"
+# Unbounded absorption in an unattended run is the hazard the default trades into. The loop
+# has to end on a number somebody can point at, not on a judgement about novelty.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "three passes" "work: absorption is capped"
+# Same argument as the ADR pass: its own commit means rejecting it is one revert rather than
+# surgery on a diff somebody wants to keep, which is what makes absorbing safe unattended.
+assert_guards "$work" "$disposal_start" "$disposal_end" \
+  "its own commit" "work: absorbed work is separately revertible"
 
 # --- work: the interactive modifier, and everything it does not change ---
 
@@ -235,6 +300,32 @@ assert_guards "$work" '^\*\*Hold for review is a hard stop' '^Then stop\.' \
 assert_contains "$work_red_flags" "ADR" \
   "work: red flags catch an ADR written for a ticket that produced nothing durable"
 
+# --- work: Step 8 reports what was disposed, and what an ADR does not discharge ---
+#
+# The report is what a human reads before merging, so it has to answer "is it all there" and
+# not only "what changed". Without the coverage line a five-of-six ticket reads as finished.
+assert_guards "$work" '^\*\*Hold for review is a hard stop' '^Then stop\.' \
+  "Coverage against the ledger" "work: Step 8 reports coverage"
+# A finding narrated here has already cost the cycle the Step 6 pass exists to save.
+assert_guards "$work" '^## Step 8: Stop' '^## Step 9: When it does not reach merge-ready' \
+  "is a bug in Step 6" "work: nothing may reach Step 8 undisposed"
+# Writing the decision down is not making it so. An ADR is an attractive way to discharge an
+# item that actually demanded a behaviour change, and then the change is silently not owed.
+assert_guards "$work" "$adr_start" "$adr_end" \
+  "never satisfies an acceptance item" "work: an ADR is not a substitute for the change"
+# The ADR already says what remains. Filing a ticket to restate it is bookkeeping about
+# bookkeeping, and it is the exact move that produced the mole-whacking this design removes.
+assert_guards "$work" "$adr_start" "$adr_end" \
+  "follow-through is not a ticket" "work: an ADR's follow-through is not new bookkeeping"
+# Revertibility assumes somebody notices. An ADR asserting a mechanism that does not exist
+# costs the branch that inherits it, not the commit that carried it.
+assert_guards "$work" "$adr_start" "$adr_end" \
+  "verify that mechanism before asserting it" "work: an ADR checks the mechanism it claims"
+assert_contains "$work_red_flags" "Say the word" \
+  "work: red flags name the deferral phrase that is a disposal that did not happen"
+assert_contains "$work_red_flags" "its own ancestor" \
+  "work: red flags catch an absorption loop that will not terminate"
+
 # --- prep: specs a ticket, touches nothing ---
 prep="$SKILLS/prep/SKILL.md"
 assert_contains "$(cat "$prep")" "csw-ticket normalize" "prep: normalises the ticket reference"
@@ -261,6 +352,19 @@ assert_contains "$(cat "$prep")" "open questions" "prep: the comment carries the
 assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
   "the codebase contradicts" \
   "prep: the comment carries what the ticket asserts and the code denies"
+
+# A ticket's declared scope has to become an enumerated, checkable list before the work starts,
+# or nothing downstream can tell a ticket that shipped from a ticket that shipped most of
+# itself. Prep already reads the whole description, so enumerating it is nearly free — and the
+# readers are a dispatch that has never seen the ticket and a cleanup deciding whether to close
+# it, neither of which can re-derive the list from prose.
+assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
+  "## Acceptance" "prep: the comment carries an enumerated acceptance list"
+assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
+  "one line per item" "prep: the acceptance list is one line per item"
+assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
+  "checkable without reading the description again" \
+  "prep: acceptance items stand on their own"
 
 # Zero side effects is the property that makes prep free to run before anything is decided,
 # and it is enumerated rather than implied for the same reason batch's dry run enumerates it.
@@ -323,6 +427,23 @@ assert_guards "$cleanup" '^## Step 3: Remove this worktree and branch' \
 assert_contains "$(cat "$cleanup")" "on either path" "cleanup: pulls the base branch on both paths"
 assert_contains "$(cat "$cleanup")" "not only for the manual path" "cleanup: says the pull is not optional"
 assert_contains "$(cat "$cleanup")" "Always ask before closing" "cleanup: never closes a ticket unasked"
+
+# --- cleanup: closure is gated on coverage, not on the sweep being clean ---
+#
+# A merged PR and a clean sweep answer "did this work land"; neither answers "is it all there".
+# Proposing closure on that evidence is how a six-item ticket closes claiming six of six with
+# an item half-built — and the human is asked to confirm with nothing to check it against.
+assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
+  '**CSW scope**' "cleanup: reads the scope ledger before proposing closure"
+assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
+  "do not propose closure" "cleanup: an uncovered item blocks the closure proposal"
+# An uncovered item is unfinished work on this ticket. Spinning it out converts one incomplete
+# ticket into two tickets and a closure that was not earned.
+assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
+  "never becomes a new ticket" "cleanup: an uncovered item is not spun out"
+cleanup_red_flags=$(sed -n '/^## Red flags/,$p' "$cleanup")
+assert_contains "$cleanup_red_flags" "ledger" \
+  "cleanup: red flags catch closure proposed on a merge rather than on coverage"
 # csw-sweep's `[gone]` arm reads `%(upstream:track)`, which only says `[gone]` once the
 # remote-tracking ref is missing locally — and a plain `git pull` does not prune, so a branch
 # deleted on the forge stays invisible to it. The sweep cannot fix this itself (it must never
@@ -552,6 +673,29 @@ assert_contains "$batch_summary" "ADRs proposed" \
   "batch: the morning summary surfaces the night's ADRs in a section of their own"
 assert_contains "$batch_red_flags" "ADR" \
   "batch: red flags catch an ADR left buried in a summary line"
+
+# --- batch: route the ticket that is going to need a conversation ---
+#
+# csw:prep already ends by declaring a ticket dispatchable or not, and nothing consumed that
+# verdict. An unattended dispatch handed a decision to make will make one, and nobody agreed
+# to it — so a decide-shaped ticket with no answer on it is a candidate to flag, not to run.
+assert_guards "$batch" '^## Step 2: Select' '^## Step 3: If this is a dry run' \
+  "decide-shaped" "batch: a decide-shaped ticket is not dispatched unattended"
+assert_guards "$batch" '^## Step 2: Select' '^## Step 3: If this is a dry run' \
+  "computed and thrown away" "batch: says why the routing exclusion exists at all"
+
+# --- batch: coverage and absorbed work have to reach the morning ---
+#
+# Same argument as `adr`: Step 7 states the rows plus Step 2's groups are the whole input, so
+# anything not in the contract cannot reach the summary. A dispatch that folded three adjacent
+# fixes in has a larger diff than its ticket implies, and a morning that cannot see that
+# reviews it as though it were the ticket.
+assert_guards "$batch" '^### The report contract' '^## Step 6: When a ticket blocks or fails' \
+  '`coverage`' "batch: the report contract carries coverage against the ledger"
+assert_guards "$batch" '^### The report contract' '^## Step 6: When a ticket blocks or fails' \
+  '`absorbed`' "batch: the report contract carries what the dispatch folded in"
+assert_contains "$batch_summary" "Absorbed work" \
+  "batch: the morning summary surfaces absorbed work in a section of its own"
 
 # --- prep: recommends by default, asks only what a recommendation cannot settle ---
 # Measured over four tickets: prep asked 4-6 questions on each, and every question carrying a

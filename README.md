@@ -41,6 +41,19 @@ it the loop only learns after a failure, at the cost of one wasted dispatch per 
 autonomously test-first, validates, and opens a PR. Then it stops. Hold-for-review is a hard
 stop, not a checkpoint to talk past.
 
+Before the worktree opens it also writes a **`**CSW scope**` comment** on the ticket: the
+declared scope as an enumerated acceptance list, plus what each dispatch found and what it did
+about it. That list is the difference between a ticket that shipped and one that shipped most
+of itself, and `csw:cleanup` will not propose closure while an item on it is uncovered.
+
+It changes what a dispatch does with what it *finds*. Notice an adjacent problem while the
+worktree is open and the default is to **fold it into the branch that found it**, as its own
+commit — filing a new ticket takes naming one of four reasons, and "it is a deletion" is not
+among them. A finding judged not worth doing is dropped and written down, so it is not
+rediscovered on the next run. Absorbing stops after three passes. The point is cycle time
+rather than backlog size: absorption is nearly free while the worktree is alive, and costs a
+full dispatch-review-merge-cleanup round once it is gone.
+
 ```
 /csw:work ENG-1088 interactive
 ```

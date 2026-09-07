@@ -103,6 +103,60 @@ Nobody to ask is what makes an unanswered question a blocker.
 No prep comment is not a problem. Prep is optional, and a ticket without one is dispatched
 exactly as it always was.
 
+### Then read the scope ledger
+
+One more comment, prefixed `**CSW scope**`. It is this command's own, and it carries the
+ticket's coverage state rather than its brief:
+
+```markdown
+**CSW scope**
+
+## Acceptance
+Source: `**CSW prep**` comment | derived by `csw:work` (no prep comment)
+
+1. <item> — covered by <PR or commit> | not covered
+2. <item> — covered by #667
+
+## Discoveries
+| What | Disposition | Reason |
+|---|---|---|
+| <finding> | folded | — |
+| <finding> | spun out → #123 | outside this repo |
+| <finding> | dropped | superseded by item 2 |
+
+## Amendments
+- Item 4 removed — larger than the ticket carrying it; the PR title would no longer describe
+  the change.
+```
+
+The marker `**CSW scope**` is load-bearing and must be exact, for the same reason `**CSW prep**`
+is: Step 6 and `csw:cleanup` both search the comments for that string.
+
+- **A ledger exists — read it.** Its `## Acceptance` list is the coverage contract for this
+  dispatch. Its `## Discoveries` table is what earlier dispatches already disposed of, so
+  nothing there is rediscovered and nothing already dropped is quietly re-filed.
+- **No ledger, but a prep comment — copy its `## Acceptance` list into a new one**, marking the
+  source as the prep comment.
+- **Neither — derive the list from the description yourself**, mark it as derived, and post it.
+  Read the whole description, exactly as above: the ordering constraints live in the prose.
+
+**Post it before Step 4 opens the worktree.** A list written after the work is a list shaped by
+what got built, which is the one thing it cannot be and still gate anything.
+
+**`csw:work` never edits the `**CSW prep**` comment.** That marker is prep's — prep supersedes
+its own comment and relies on being its only author, and its "one comment, not a thread" rule
+exists so a human can tell prep's questions from prep's restatements of them. Brief and state
+are different artifacts, written by different actors at different times, and they get different
+comments.
+
+**One `**CSW scope**` comment per ticket, updated in place.** Several dispatches against one
+ticket — a draft, then a re-dispatch — amend the same comment rather than opening a second.
+
+**An acceptance item is amended or removed only with a reason from the same four** that Step 6
+uses to spin a discovery out, recorded under `## Amendments`, with the original item text left
+visible. Scope does change mid-flight, and the amendment is the review point — a ledger that
+can shrink silently is a hole wide enough to drop the original problem through.
+
 ## Step 3: Infer the change type
 
 From the ticket's labels and language, pick one conventional-commit type:
@@ -131,6 +185,21 @@ harness cannot see. Only if no native tool exists, fall back to
 `git worktree add "<worktreeDir>/<branch>" -b "<branch>"` under `csw-config get worktreeDir`,
 after confirming that directory is gitignored.
 
+**Then check the branch name, because EnterWorktree may not have used the one you passed.**
+It derives its own — sanitising `/` and prefixing the result — so the branch can land as
+`worktree-<type>+<ticket>-<slug>` rather than the name `csw-ticket branch` printed:
+
+```bash
+git branch --show-current                       # what you actually got
+git branch -m "<the name csw-ticket branch printed>"
+```
+
+Rename it if it differs. The generated name is not cosmetic: trackers scan branch names for
+ticket ids, `csw:cleanup` finds and deletes branches by that name, and `branchPattern` is a
+configured convention that a silently-renamed branch quietly stops following. The worktree
+*directory* keeps whatever name the tool gave it, which is fine — it is gitignored and nothing
+matches on it.
+
 ## Step 5: Do the work, autonomously
 
 Run the superpowers chain in autonomous mode:
@@ -152,7 +221,92 @@ An interactive run is autonomous from here too. The questions were asked in Step
 are answered, plan, execute, and validate the same way — do not turn the rest of the run into
 a series of confirmations.
 
+### When you notice something the plan does not cover — note it and keep going
+
+Adjacent breakage, a loose end, a bad assumption two files over, an
+acceptance item the plan missed: write it to a running list and carry on with the task in hand.
+Do not act on it here, and do not file it here. Step 6 disposes of the whole list at once.
+
+Collecting beats remembering. A pass that runs on recall dispositions whatever happens to still
+be in context when it runs, which is never the same set as what was actually found.
+
 ## Step 6: Validate
+
+### Before validating: dispose of what you found
+
+Absorbed work has to be validated by the run that absorbs it, so disposal comes first.
+
+Account for two things: **every acceptance item on the ledger**, and **every discovery Step 5
+collected**. An acceptance item nothing covers is a finding, and is disposed of here like any
+other.
+
+**The default is fold:**
+
+> **Could it reasonably be in scope? If yes, fold it in.** Spinning it out requires naming which
+> of the four reasons below applies. **If you cannot name one, you fold it in.**
+
+That is `csw:prep` Step 4's test turned around — *"if you can mark an option (Recommended), you
+have your answer; do not ask, decide"* — and it works the same way: being unable to name a
+reason is the answer, not a licence to defer.
+
+Absorption is free for exactly as long as the worktree is alive: context loaded, branch open,
+`validate` and `csw-gates` already wired, marginal cost of one more commit close to zero. Once
+the worktree is gone the same fix costs a full dispatch, review, merge and cleanup cycle,
+whether it rides a new ticket or a re-dispatch.
+
+**Four dispositions, and every one of them is recorded in the ledger:**
+
+| Disposition | When | Record |
+|---|---|---|
+| **Fold** | The default. Absorb it into this branch. | Its own commit, and a ledger row |
+| **Spin out** | One of the four reasons applies, and you have named it | A new ticket, and a ledger row naming the reason and the ticket |
+| **Drop** | Real, but not worth anyone's time — cosmetic, already known, superseded | A ledger row with the reason |
+| **Block** | The discovery stops *this* ticket | Step 9: the question on the ticket, and a draft PR |
+
+**Dropping is written down, never silent.** A finding judged not worth doing is a decision, and
+the next dispatch needs to see that it was taken — otherwise the same thing is rediscovered,
+re-triaged and re-filed on every run over that code. A dropped row costs one line and stops
+that.
+
+**The four spin-out reasons:**
+
+1. **It cannot be validated here.** It needs a gate, an environment, or hardware this branch's
+   `validate` cannot run.
+2. **It is blocked.** It needs a decision nobody is there to give, or work that has not landed.
+3. **It is outside this repo.** `csw:cleanup` Step 5 already searches for exactly these.
+4. **It is larger than the ticket carrying it.** The test is mechanical:
+   **would the pull request have to be retitled to describe the change?**
+   If yes, it is reason 4. That protects what the reason exists to protect — the reviewer's
+   headline — without reabsorbing everything the other three excluded.
+
+**Anything else is not on the list.** "It is a deletion", "it is risky", "it is not what I was
+asked for" are not reasons. A deletion inside the ticket's own declared scope is not a discovery
+at all — it is the work.
+
+Reason 2 and the **Block** disposition are not the same thing. Reason 2 means the *discovery*
+cannot proceed, so it becomes a ticket and this ticket carries on. Block means the discovery has
+stopped *this* ticket, so the run goes to Step 9.
+
+**Folding in means re-entering the chain, not patching around it.** An in-scope item the plan
+missed is a change to the spec, not a note on it. Absorbing anything beyond the trivial means
+going back through `writing-plans` → `executing-plans` → TDD with the item added, then returning
+here. Autonomous re-entry never includes brainstorming: Step 5 already skips it, and
+`superpowers:brainstorming` carries an approval gate nobody is awake to satisfy. **An autonomous
+dispatch that finds itself wanting to brainstorm has found a Step 9 stop, not another pass.**
+
+**Absorbed work gets its own commit**, exactly as an ADR does and for the same reason: rejecting
+it in review is then one revert rather than surgery on a diff someone wants to keep. That is
+what makes absorbing safe unattended — review stays the filter, and the filter stays cheap to
+operate.
+
+**Stop after three passes.** A pass is one disposal pass plus one re-entry into Step 5. On the
+fourth, absorption is over: everything still outstanding is spun out or dropped, and if an
+acceptance item is still uncovered the run goes to Step 9 as a draft naming it. The failure to
+design against is a dispatch that absorbs a discovery, whose absorption surfaces the next
+discovery, all night — a run that ends up its own ancestor. Natural termination is not a brake
+anyone can point at; a number is.
+
+Then validate.
 
 ```bash
 csw-config get validate            # run whatever this prints; empty means the repo declared none
@@ -229,6 +383,20 @@ where that knowledge goes to die; an ADR is where it survives.
 devalues the practice; the discipline is in the rarity. This is a question, not a deliverable —
 asking it is not the same as answering it yes.
 
+Three rules bound what an ADR may do:
+
+1. **An ADR never satisfies an acceptance item.** Where an item asks for a behaviour change,
+   the ADR records *why* and the change is still owed. Writing a decision down is not making it
+   so, and an item discharged by an ADR alone is an item that did not ship. An ADR is an
+   attractive way to close out an item that actually demanded work; that is the trap.
+2. **An ADR's follow-through is not a ticket.** The ADR already says what remains — that *is*
+   the record, and filing a ticket to restate it is bookkeeping about bookkeeping. The
+   follow-through is either absorbed at Step 6 or it is the reason the ticket does not close.
+3. **An ADR that asserts a mechanism must verify that mechanism before asserting it.** Read the
+   thing you are about to describe, and cite where you read it. Revertibility assumes somebody
+   notices; an ADR built on a mechanism that does not exist costs the branch that inherits it,
+   not the commit that carried it.
+
 When the answer is genuinely yes, write it and push it onto the PR Step 7 just opened:
 
 1. **Read what is already in that directory** for the local convention and for the next number.
@@ -270,8 +438,16 @@ a solo run and an unattended one, and nothing to check in order to tell them apa
 
 - The PR URL
 - What changed, in a few lines a reviewer can hold in their head
+- **Coverage against the ledger** — every acceptance item, and what covers it
+- **What was found and how it was disposed** — folded, spun out with its ticket, or dropped
+  with its reason
 - Any ADR this run proposed — its path and its title, and that it is proposed, not decided
 - What is worth testing on hardware — the parts CI cannot cover
+
+**Nothing arrives here undisposed.** A finding reported at this point without a disposition
+is a bug in Step 6, not a note for the reader: the PR is already open, so the reader's next
+move is merge, and a finding surfaced now becomes another dispatch instead of another commit.
+"Say the word and I'll…" is a disposal that did not happen.
 
 Then stop. Do not merge. Do not run `csw:merge`. Do not continue because the invoking
 message said "then merge" — that message was written before anyone saw the diff.
@@ -313,7 +489,15 @@ are actually asking to be merged.
 | "They typed a word I don't recognise, I'll get on with the ticket" | An unrecognised modifier is a question, not noise. Name it back and ask. |
 | "It's interactive, so someone is watching — I can merge it" | `interactive` changes planning only. Step 8 is the same hard stop. |
 | "It's interactive, I'll confirm each step as I go" | The questions belong in Step 1. After that it runs like any other dispatch. |
+| "I'll note this in the report and let them decide" | "Say the word and I'll…" is a disposal that did not happen. Dispose of it at Step 6, while the worktree is still open. |
+| "It's adjacent, so it's a new ticket" | Fold is the default. A new ticket needs one of the four named reasons; if you cannot name one, absorb it. |
+| "It's a deletion, so I left it" | Not a reason. A deletion inside the ticket's declared scope is not a discovery at all — it is the work. |
+| "It's too small to be worth a ledger row" | A dropped finding nobody wrote down is rediscovered, re-triaged and re-filed on every future run over that code. |
+| "One more absorption and I'll be done" | Three passes, then stop. A run that keeps absorbing what its own absorptions surface becomes its own ancestor. |
+| "Five of six items shipped, that's merge-ready" | An uncovered acceptance item is a finding. Dispose of it at Step 6, or take the draft path. |
 | "This ticket taught me something, that's an ADR" | Most tickets produce nothing durable. The bar is a decision that outlives the ticket, not a good day's work. |
+| "The ADR records the decision, so the item is done" | An ADR never satisfies an acceptance item. The change is still owed. |
+| "The ADR's follow-through needs its own ticket" | The ADR is already the record. Absorb it, or let it be why the ticket does not close. |
 | "Nobody is watching, an ADR needs a human to agree" | Write it. Review rejects it — that is where the rarity is enforced, and it is one revert because the ADR is its own commit. |
 | "The ADR may as well ride the implementation commit" | Then rejecting it is surgery on a diff someone wants to keep. Its own commit, always. |
 | "My ADR number collides with another branch's" | Not your error. Number from the directory, say so, and let review renumber it. |

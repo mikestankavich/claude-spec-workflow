@@ -113,6 +113,20 @@ Three filters, none of which is guesswork:
    PR is wrong, both validated against the base, and one still has to be redone rather than
    rebased.
 
+A fourth exclusion, read off the ticket rather than computed by the filter:
+
+4. **A decide-shaped ticket with no answer on it is not dispatched.** Where the description
+   asks for a decision — "decide whether", "choose between", "work out what X is for" — and the
+   ticket carries no `**CSW prep**` comment, or carries one whose `## Open questions` is not
+   `_None._`, move it to `skipped` with that as its reason.
+
+   It is a candidate for `/csw:prep` or `/csw:work interactive`, not for a dispatch at 3am.
+   Prep already ends by declaring a ticket dispatchable or not; this is the step that reads the
+   verdict, and without it the verdict is computed and thrown away. An unattended dispatch
+   handed a decision to make will make one, and nobody agreed to it — the expensive version of
+   that is a decision recorded as an ADR, which then has to be corrected by the branch that
+   inherits it.
+
 Then the cap — three or four, not the whole column. The ceiling is not the loop, it is
 review: preview environments merge every open non-draft PR together, so the morning review
 tests the *combination*. Past three or four, a bug found there cannot be attributed without
@@ -247,6 +261,8 @@ Each subagent returns one structured result and nothing else — no transcript, 
 | `pr` | The pull request URL, or none if it never got that far |
 | `summary` | One line on what changed |
 | `blocker` | For `draft` and `failed`: the question asked, or what stopped it |
+| `coverage` | Every acceptance item accounted for, or which are not — from the ticket's `**CSW scope**` comment |
+| `absorbed` | What this dispatch folded in beyond the ticket's own items, one line each, or none |
 | `adr` | The ADR the dispatch proposed — its path and its title — or none, which is the usual answer |
 
 `adr` is in the contract because it cannot reach the morning any other way. `csw:work` Step 8
@@ -254,6 +270,12 @@ writes the ADR itself when the repo sets `adrDir` — a subagent behaves exactly
 does, and nothing about the batch is asked to hold back — but Step 7 below assembles the summary
 from these rows and Step 2's groups and nothing else. An ADR that is not in the row is an ADR
 that merges unnoticed, which is the single way writing them unattended goes wrong.
+
+`coverage` and `absorbed` are in the contract for the same reason. A dispatch that folded three
+adjacent fixes into its branch has a larger diff than its ticket describes, and a morning that
+cannot see that reviews it as though it were the ticket. Coverage is the other half: it is what
+separates a ticket that shipped from a ticket that shipped most of itself, and it is the input
+`csw:cleanup` needs before it will propose closure.
 
 That row is all the controller keeps. It is what Step 7 assembles the morning summary from,
 which is why the summary is built out of results rather than reconstructed from a transcript.
@@ -298,7 +320,8 @@ reconstructed by hand across the tracker or read back out of a transcript:
 | Section | Contents |
 |---|---|
 | Dispatched | Every ticket the loop started |
-| PRs open | Ticket, PR URL, one line on what changed — the `pr` rows |
+| PRs open | Ticket, PR URL, one line on what changed, and its coverage — the `pr` rows |
+| Absorbed work | Ticket, and what the dispatch folded in beyond its own items — the `absorbed` rows, if any |
 | Blocked with questions | Ticket, the question asked, the draft PR — the `draft` rows |
 | Failed | Ticket and what came back — the `failed` rows, if any |
 | ADRs proposed | Ticket, the ADR's path and title — the `adr` rows, if any. Proposed, not decided |
@@ -311,6 +334,12 @@ exists to prevent, and a section is what survives a skim of the morning. Most ni
 empty, and an empty section says the useful thing too. Each one is a single commit on its PR,
 so rejecting it is a revert — say that, so the morning reads them as proposals rather than as
 decisions already taken.
+
+**Absorbed work gets a section on the same footing, and for the same reason.** Folding adjacent
+work in is what stops a finding costing a whole cycle, and it is also the thing that quietly
+grows a diff past what its ticket describes. Each absorption is its own commit, so rejecting one
+is a revert — say so, and the morning reads them as proposals too. An empty section says the
+useful thing as well: the night found nothing worth absorbing.
 
 If Step 2 failed outright, this table is not the report. Say plainly that selection failed,
 quote the filter's message, and that nothing was evaluated or dispatched — never fold a
