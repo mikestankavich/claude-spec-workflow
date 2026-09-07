@@ -225,6 +225,29 @@ stale_worktrees() {
   done
 }
 
+# What is running from a worktree, indented under the worktree line it belongs
+# to. Report only: csw:cleanup Step 3 removes *this* worktree and may stop what
+# lived in it, because a live run owns it; Step 4's sweep owns nothing it lists,
+# so it says what removal would orphan and stops there.
+#
+# Failure is swallowed here and only here. A sweep is a report, and a missing
+# docker or an unreadable /proc must not turn a clean sweep into a non-zero
+# exit -- the exit code is reserved for "the sweep did not run".
+services_for() { # worktree path
+  "$HERE/csw-services" report "$1" 2>/dev/null | sed -e 's/^/    /' || true
+}
+
+# Compose projects whose working_dir names a path under this repo's worktreeDir
+# that no longer exists. Those are provably worktrees CSW created and removed --
+# its own mess by origin, just not the worktree any live cleanup run owns, which
+# is why they are reported and never touched. Without this the design would be
+# silent about every orphan created before it shipped.
+orphan_projects() {
+  "$HERE/csw-services" orphans 2>/dev/null \
+    | grep -v '^no orphaned compose projects$' \
+    || true
+}
+
 case "${1:-}" in
   branches)
     stale_branches
@@ -235,17 +258,30 @@ case "${1:-}" in
   ''|report)
     b=$(stale_branches)
     w=$(stale_worktrees)
+    o=$(orphan_projects)
     # Before the findings, and before "nothing to sweep" — the caveats have to
     # reach the reader whether or not anything was found.
     base_behind_note
     prune_note "$b"
-    if [ -z "$b" ] && [ -z "$w" ]; then
+    # Orphans count towards "is there anything to report". They are the one
+    # population no future cleanup run will ever own, so a sweep that stayed
+    # silent about them would be the only place they could ever surface.
+    if [ -z "$b" ] && [ -z "$w" ] && [ -z "$o" ]; then
       printf 'nothing to sweep\n'
       exit 0
     fi
     if [ -n "$w" ]; then
       printf 'Stale worktrees:\n'
-      printf '%s\n' "$w" | sed -e 's/^/  /' -e "s/$(printf '\t')/  ->  /"
+      # Each worktree, then what is still running from it — so a human deciding
+      # whether to remove it can see what removal would orphan, before it does.
+      printf '%s\n' "$w" | while IFS= read -r line; do
+        printf '  %s\n' "$(printf '%s' "$line" | sed -e "s/$(printf '\t')/  ->  /")"
+        services_for "${line%%$(printf '\t')*}"
+      done
+    fi
+    if [ -n "$o" ]; then
+      printf 'Orphaned compose projects:\n'
+      printf '%s\n' "$o" | sed -e 's/^/  /'
     fi
     if [ -n "$b" ]; then
       printf 'Merged or upstream-gone branches:\n'

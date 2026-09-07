@@ -492,4 +492,76 @@ else
   assert_eq "$gone_after" "$gone_before" "the sweep still moves no ref while reporting the prune caveat"
 fi
 
+# --- services: the sweep reports them, and acts on none of them ---
+# csw:cleanup Step 3 removes *this* worktree; Step 4's sweep only reports the
+# rest. Services inherit that split unchanged: act on the worktree being
+# removed, report what is provably ours and abandoned, ignore everything else.
+if grep -qE '(killpg|docker compose|csw-services (stop|down))' "$BIN/csw-sweep"; then
+  FAILURES=$((FAILURES + 1))
+  printf 'FAIL csw-sweep must never act on services, only report them\n' >&2
+else
+  PASSES=$((PASSES + 1))
+fi
+assert_contains "$(cat "$BIN/csw-sweep")" "csw-services" "csw-sweep consults csw-services"
+
+if command -v python3 >/dev/null 2>&1; then
+  # An orphan surfaces even in an otherwise clean sweep, because the orphaned
+  # population is precisely the one no future cleanup run will ever own -- no
+  # worktree removal is coming that could be "cleaning up after itself" with
+  # respect to it.
+  orphan_repo=$(make_repo)
+  write_config "$orphan_repo" <<'JSON'
+{ "worktreeDir": ".claude/worktrees" }
+JSON
+  fakebin2=$(mktemp -d); TMPDIRS+=("$fakebin2")
+  cat >"$fakebin2/docker" <<EOF
+#!/usr/bin/env bash
+[ "\$1" = "ps" ] || exit 1
+printf '%s\t%s\t%s\t%s\t%s\n' "oldpg" "$orphan_repo/.claude/worktrees/feat+9-gone" "pg9" "Up 10 hours" "0.0.0.0:5432->5432/tcp"
+EOF
+  chmod +x "$fakebin2/docker"
+
+  sweep_out=$(in_dir "$orphan_repo" env CSW_SERVICES_DOCKER="$fakebin2/docker" "$BIN/csw-sweep")
+  assert_contains "$sweep_out" "pg9" "an orphaned compose project surfaces in an otherwise clean sweep"
+  assert_contains "$sweep_out" "no longer exists" "the sweep says why the orphan is an orphan"
+  assert_status 0 "a sweep reporting an orphan still exits 0" -- \
+    in_dir "$orphan_repo" env CSW_SERVICES_DOCKER="$fakebin2/docker" "$BIN/csw-sweep"
+
+  # And a machine with nothing orphaned still says "nothing to sweep" rather
+  # than growing an empty section.
+  quiet_repo=$(make_repo)
+  cat >"$fakebin2/docker-empty" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = "ps" ] || exit 1
+EOF
+  chmod +x "$fakebin2/docker-empty"
+  quiet_out=$(in_dir "$quiet_repo" env CSW_SERVICES_DOCKER="$fakebin2/docker-empty" "$BIN/csw-sweep")
+  assert_eq "$quiet_out" "nothing to sweep" \
+    "a clean machine still reports exactly 'nothing to sweep'"
+
+  # A stale worktree that is still there reports what is running from it, so a
+  # human deciding whether to remove it can see what removal would orphan.
+  svc_repo=$(make_repo)
+  write_config "$svc_repo" <<'JSON'
+{ "worktreeDir": ".claude/worktrees" }
+JSON
+  in_dir "$svc_repo" git checkout -q -b feat/stale
+  in_dir "$svc_repo" git commit -q --allow-empty -m work
+  in_dir "$svc_repo" git checkout -q main
+  in_dir "$svc_repo" git merge -q --no-ff -m merge feat/stale
+  stale_wt="$svc_repo/.claude/worktrees/feat+stale"
+  in_dir "$svc_repo" git worktree add -q --detach "$stale_wt" >/dev/null 2>&1
+  in_dir "$svc_repo" git worktree remove --force "$stale_wt" >/dev/null 2>&1
+  in_dir "$svc_repo" git worktree add -q "$stale_wt" feat/stale >/dev/null 2>&1
+  cat >"$fakebin2/docker-stale" <<EOF
+#!/usr/bin/env bash
+[ "\$1" = "ps" ] || exit 1
+printf '%s\t%s\t%s\t%s\t%s\n' "stalepg" "$stale_wt" "stale9" "Up 4 hours" "0.0.0.0:5544->5432/tcp"
+EOF
+  chmod +x "$fakebin2/docker-stale"
+  stale_out=$(in_dir "$svc_repo" env CSW_SERVICES_DOCKER="$fakebin2/docker-stale" "$BIN/csw-sweep")
+  assert_contains "$stale_out" "feat/stale" "the stale worktree is still reported"
+  assert_contains "$stale_out" "stale9" "the sweep reports what is running from a stale worktree"
+fi
+
 report

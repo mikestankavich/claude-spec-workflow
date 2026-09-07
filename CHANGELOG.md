@@ -58,6 +58,22 @@ ticket that produced it is closed.
 - **`assert_guards` test helper** — scopes a needle to the region of a skill file that
   documents the behaviour, so reverting the behaviour deletes the region and the assertion
   goes red. (#69)
+- **`bin/csw-services`, and `/csw:cleanup` stops a worktree's services before removing it.**
+  Removing a worktree never stopped what was running in it: the directory went and the dev
+  server, the file watcher and the database container survived, with nothing left to identify
+  them by. So cleanup was not merely failing to tidy up, it was what *manufactured* orphans —
+  and the cost is not a wasted process but a test run going green against a database belonging
+  to a branch that shipped ten hours ago, with every precondition check passing. A healthy
+  orphan gets *adopted* rather than ignored, by every session that finds it on the expected
+  port, which is what makes one permanent. `csw-services` takes one worktree path and reads
+  origin out of bookkeeping the machine already keeps — `/proc/<pid>/cwd` for host processes,
+  `com.docker.compose.project.working_dir` for compose projects — so nothing is written and
+  nothing can go stale. It signals process groups, not pids, because the tree's leaf is what
+  holds the port. Supervised `systemctl --user` units, unlabelled containers and anything
+  outside the worktree are never touched, and there is no machine-wide acting mode. Teardown
+  is mandatory and unprompted, on the same rule as branch cleanup, and it names everything
+  before it signals it. `csw-sweep` reports the two populations it must not act on: what is
+  running from a stale worktree, and compose projects whose worktree is already gone. (#119)
 
 ### Changed
 - **`/csw:batch` dispatches each ticket to a fresh subagent.** Step 4 previously ran every

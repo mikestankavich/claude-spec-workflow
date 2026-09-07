@@ -55,6 +55,32 @@ and feedback.
    Every bash tool under `bin/` has a matching `tests/test-<name>.sh`. `tests/run-tests.sh`
    runs every `tests/test-*.sh` file and fails the suite if any of them fail.
 
+   **`csw-services` needs more than the suite.** CSW runs no services of its own — no dev
+   server, no watcher, no database — so `tests/test-csw-services.sh` works against fixtures:
+   real processes `cd`'d into temporary directories, a real listener on a kernel-picked port,
+   a fake `docker` on `CSW_SERVICES_DOCKER`, and a fake `/proc` tree on `CSW_SERVICES_PROC`
+   for the supervised-unit exclusion, which cannot be created in a test at all. Those two env
+   vars exist for the tests and are not part of the tool's interface.
+
+   **You do not need a real project to dogfood the host arm — background something from the
+   worktree you are standing in.** That is the one shape the fixtures cannot reproduce,
+   because it puts a real session process tree above the tool, which is exactly what the
+   self-and-ancestor exclusion has to survive:
+
+   ```bash
+   wt=$(git rev-parse --show-toplevel)
+   bin/csw-services report "$wt"                       # expect: nothing running
+   ( cd "$wt" && setsid python3 -m http.server 8099 & ) # a dev-server-shaped process
+   bin/csw-services report "$wt"                       # expect: pid, pgid, :8099, command
+   bin/csw-services stop "$wt" --grace 2               # expect: the port frees, your shell lives
+   ```
+
+   What that still cannot reach is the **compose arm** — no containers here — and a
+   multi-level process tree of the kind `pnpm` builds. So the fixtures prove the selection
+   rules, the loop above proves the host arm against a live worktree, and **a session in a
+   repo with a real stack is what proves the rest**. Worth doing before trusting a change to
+   either arm.
+
 ## Hacking on CSW Skills
 
 Skills are plain markdown under `skills/<name>/SKILL.md` (`work`, `merge`, `cleanup`,

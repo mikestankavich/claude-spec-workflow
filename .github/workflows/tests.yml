@@ -16,4 +16,16 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq shellcheck
-          shellcheck --severity=warning tests/*.sh $(ls bin/* 2>/dev/null | grep -v batch-filter || true)
+          # Select shell scripts by their shebang, not by name. This used to be
+          # `grep -v batch-filter` -- a denylist of exactly one Python bin, which
+          # every later Python bin had to be remembered into. csw-services was
+          # the second, and CI failed with SC1071 rather than saying so.
+          shell_bins=
+          for f in bin/*; do
+            [ -f "$f" ] || continue
+            case "$(head -1 "$f")" in
+              *bash|*dash|*ksh|*/sh|*"env sh") shell_bins="$shell_bins $f" ;;
+            esac
+          done
+          # shellcheck disable=SC2086
+          shellcheck --severity=warning tests/*.sh $shell_bins
