@@ -57,7 +57,9 @@ assert_eq "$(jq -r '.name' "$REPO_ROOT/.claude-plugin/plugin.json")" "csw" \
 
 # --- Both manifests and VERSION agree. ---
 version=$(tr -d '[:space:]' <"$REPO_ROOT/VERSION")
-assert_eq "$version" "1.1.0" "VERSION is 1.1.0"
+# The shape, not the number -- see tests/test-plugin-manifest.sh.
+assert_eq "$(printf '%s' "$version" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+$')" "1" \
+  "VERSION is a bare semver version"
 assert_eq "$(jq -r '.version' "$REPO_ROOT/.claude-plugin/plugin.json")" "$version" \
   "plugin.json version matches VERSION"
 assert_eq "$(jq -r '.plugins[0].version' "$REPO_ROOT/.claude-plugin/marketplace.json")" "$version" \

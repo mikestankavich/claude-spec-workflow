@@ -37,6 +37,12 @@ Dispatch reads that comment back as part of the brief — decisions and answers 
 settled, and questions still unanswered send the run to a draft PR instead of a guess. Without
 it the loop only learns after a failure, at the cost of one wasted dispatch per question.
 
+Set `baseline` to a cheap command and it runs first, in the main checkout, before the ticket is
+claimed or a worktree opens — so a machine that was *already* broken is named in two seconds
+rather than presenting as a failure of the change twenty minutes later, with a diff on top of
+it. It is not a pre-run of the gate and a green baseline says nothing about the work. Absent,
+the default, and the step does not run at all.
+
 **Dispatch** reads the ticket, sets it In Progress, opens a worktree, runs the work
 autonomously test-first, validates, and opens a PR. Then it stops. Hold-for-review is a hard
 stop, not a checkpoint to talk past.
@@ -53,6 +59,12 @@ among them. A finding judged not worth doing is dropped and written down, so it 
 rediscovered on the next run. Absorbing stops after three passes. The point is cycle time
 rather than backlog size: absorption is nearly free while the worktree is alive, and costs a
 full dispatch-review-merge-cleanup round once it is gone.
+
+When it stops, it also says what finishing this ticket **unblocked** — every ticket the closed
+one was blocking, with its remaining blocker count, and a distinct callout for one whose last
+blocker this run just cleared. That is a fact the tracker already holds and nobody is looking
+at: a named objective can become runnable in the afternoon and the day still ends feeling like
+seven tickets of drift. It reports, and modifies no ticket but its own.
 
 ```
 /csw:work ENG-1088 interactive
