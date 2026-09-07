@@ -25,6 +25,70 @@ long=$("$BIN/csw-ticket" slug 'replace the deprecated dsn setting rather than de
 assert_eq "${#long}" "40" "long slug truncates to 40 characters"
 case "$long" in *-) assert_eq "trailing-dash" "none" "truncated slug has no trailing dash" ;; *) PASSES=$((PASSES + 1)) ;; esac
 
+# --- Truncation must not bisect a ticket reference into the slug tail (#125) ---
+#
+# Observed on trakrf/platform PR #614: the 40-character cut landed inside a
+# trailing "tra-1206" and left "...-tra-120". Linear scans branch names for
+# issue ids, matched TRA-120 -- a real, unrelated ticket closed months earlier
+# -- and dragged it out of Done into In Review. Nothing errored and no check
+# failed, because the wrong ticket is a real ticket; the PR body was innocent
+# (`Refs TRA-1206`), so the branch name is the only place the tell exists.
+bisected=$("$BIN/csw-ticket" slug 'The soak driver runs vitest only TRA-1206')
+assert_eq "$bisected" "the-soak-driver-runs-vitest-only" \
+  "a ticket id bisected by the cut is dropped from the tail, not left valid"
+if printf '%s' "$bisected" | grep -q -- '-[a-z][a-z]*-[0-9][0-9]*$'; then
+  assert_eq "ticket-shaped tail" "none" "the truncated slug retains no ticket-shaped tail at all"
+else
+  PASSES=$((PASSES + 1))
+fi
+
+# The leading reference is what carries meaning to the trackers, and it is
+# never at risk from the cut. Stripping the tail must not touch it.
+assert_eq "$("$BIN/csw-ticket" branch feat TRA-1206 'The soak driver runs vitest only TRA-1206')" \
+  "feat/tra-1206-the-soak-driver-runs-vitest-only" \
+  "the leading reference survives; only the tail is stripped"
+
+# The rule strips ticket references, not every trailing number. A version tail
+# has no dash between its letters and its digits, so it is not ticket-shaped
+# even when the cut lands right on it.
+assert_eq "$("$BIN/csw-ticket" slug 'Migrate whole ingest pipeline to apis v2 today')" \
+  "migrate-whole-ingest-pipeline-to-apis-v2" \
+  "a truncated -v2 tail is not a ticket reference and is left alone"
+
+# Scoped to slugs the cut actually shortened. Firing unconditionally would eat
+# ordinary English tails -- "roadmap for 2026" is not a ticket reference, and
+# neither is any short title that happens to end in one.
+assert_eq "$("$BIN/csw-ticket" slug 'Roadmap for 2026')" "roadmap-for-2026" \
+  "an untruncated trailing year is left alone"
+assert_eq "$("$BIN/csw-ticket" slug 'Add nav vocabulary')" "add-nav-vocabulary" \
+  "a slug shorter than the cut is otherwise unchanged"
+
+# A reference the cut never touched is still a reference, and a tracker scanning
+# the branch name cannot tell the two apart -- "Port the fix from TRA-120" is an
+# ordinary title to write, and it reopens TRA-120 exactly as the bisected one
+# did. So the tail is stripped whether or not the cut fired, but only when it
+# names *this repo's* configured prefix: that is narrow enough to leave
+# "roadmap-for-2026" alone, which the generic letters-dash-digits rule applied
+# unconditionally would eat.
+assert_eq "$("$BIN/csw-ticket" slug 'Port the fix from TRA-120')" "port-the-fix-from" \
+  "an untruncated tail naming the configured prefix is stripped too"
+assert_eq "$("$BIN/csw-ticket" branch feat TRA-1206 'Port the fix from TRA-120')" \
+  "feat/tra-1206-port-the-fix-from" \
+  "branch: the configured-prefix tail goes, the leading reference stays"
+
+# Partial trailing words are already tolerated in generated names, which is
+# what makes dropping a whole segment cheap. This is the sibling branch from
+# the same week that was safe only by luck.
+assert_eq "$("$BIN/csw-ticket" slug 'Local dev db drifts silently and just barely works')" \
+  "local-dev-db-drifts-silently-and-just-ba" \
+  "a partial trailing word is still tolerated"
+
+# One strip is not enough: dropping the last ticket-shaped segment can expose
+# another one underneath, and the tracker matches whatever is left.
+assert_eq "$("$BIN/csw-ticket" slug 'Sync the issue references ENG-45 TRA-1206 now')" \
+  "sync-the-issue-references" \
+  "stripping repeats until no ticket-shaped tail remains"
+
 assert_eq "$("$BIN/csw-ticket" branch feat TRA-1088 Add nav vocabulary)" \
   "feat/tra-1088-add-nav-vocabulary" "branch renders the pattern"
 assert_eq "$("$BIN/csw-ticket" branch fix 1076 'Replace the DSN setting')" \
@@ -134,6 +198,13 @@ assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" normalize '#68')" "68" "github: lead
 assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" number 68)" "68" "github: number of a bare reference"
 assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" branch feat 68 'Add the prep pass')" \
   "feat/68-add-the-prep-pass" "github: branch name from a bare issue number"
+
+# With no ticketPrefix there is no repo-local reference shape to protect, and
+# GitHub does not reopen an issue from a branch name anyway. A foreign tail the
+# cut never touched is left exactly as written.
+assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" slug 'Port the fix from TRA-120')" \
+  "port-the-fix-from-tra-120" \
+  "github: no configured prefix, so an untruncated foreign tail is left alone"
 
 # An explicit prefix still wins if someone configures one alongside github.
 ghp=$(make_repo)
