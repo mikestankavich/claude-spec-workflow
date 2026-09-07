@@ -286,6 +286,32 @@ assert_guards "$work" '^\*\*Hold for review is a hard stop' '^Then stop\.' \
 assert_contains "$work_red_flags" "ADR" \
   "work: red flags catch an ADR written for a ticket that produced nothing durable"
 
+# --- work: Step 8 reports what was disposed, and what an ADR does not discharge ---
+#
+# The report is what a human reads before merging, so it has to answer "is it all there" and
+# not only "what changed". Without the coverage line a five-of-six ticket reads as finished.
+assert_guards "$work" '^\*\*Hold for review is a hard stop' '^Then stop\.' \
+  "Coverage against the ledger" "work: Step 8 reports coverage"
+# A finding narrated here has already cost the cycle the Step 6 pass exists to save.
+assert_guards "$work" '^## Step 8: Stop' '^## Step 9: When it does not reach merge-ready' \
+  "is a bug in Step 6" "work: nothing may reach Step 8 undisposed"
+# Writing the decision down is not making it so. An ADR is an attractive way to discharge an
+# item that actually demanded a behaviour change, and then the change is silently not owed.
+assert_guards "$work" "$adr_start" "$adr_end" \
+  "never satisfies an acceptance item" "work: an ADR is not a substitute for the change"
+# The ADR already says what remains. Filing a ticket to restate it is bookkeeping about
+# bookkeeping, and it is the exact move that produced the mole-whacking this design removes.
+assert_guards "$work" "$adr_start" "$adr_end" \
+  "follow-through is not a ticket" "work: an ADR's follow-through is not new bookkeeping"
+# Revertibility assumes somebody notices. An ADR asserting a mechanism that does not exist
+# costs the branch that inherits it, not the commit that carried it.
+assert_guards "$work" "$adr_start" "$adr_end" \
+  "verify that mechanism before asserting it" "work: an ADR checks the mechanism it claims"
+assert_contains "$work_red_flags" "Say the word" \
+  "work: red flags name the deferral phrase that is a disposal that did not happen"
+assert_contains "$work_red_flags" "its own ancestor" \
+  "work: red flags catch an absorption loop that will not terminate"
+
 # --- prep: specs a ticket, touches nothing ---
 prep="$SKILLS/prep/SKILL.md"
 assert_contains "$(cat "$prep")" "csw-ticket normalize" "prep: normalises the ticket reference"

@@ -368,6 +368,20 @@ where that knowledge goes to die; an ADR is where it survives.
 devalues the practice; the discipline is in the rarity. This is a question, not a deliverable —
 asking it is not the same as answering it yes.
 
+Three rules bound what an ADR may do:
+
+1. **An ADR never satisfies an acceptance item.** Where an item asks for a behaviour change,
+   the ADR records *why* and the change is still owed. Writing a decision down is not making it
+   so, and an item discharged by an ADR alone is an item that did not ship. An ADR is an
+   attractive way to close out an item that actually demanded work; that is the trap.
+2. **An ADR's follow-through is not a ticket.** The ADR already says what remains — that *is*
+   the record, and filing a ticket to restate it is bookkeeping about bookkeeping. The
+   follow-through is either absorbed at Step 6 or it is the reason the ticket does not close.
+3. **An ADR that asserts a mechanism must verify that mechanism before asserting it.** Read the
+   thing you are about to describe, and cite where you read it. Revertibility assumes somebody
+   notices; an ADR built on a mechanism that does not exist costs the branch that inherits it,
+   not the commit that carried it.
+
 When the answer is genuinely yes, write it and push it onto the PR Step 7 just opened:
 
 1. **Read what is already in that directory** for the local convention and for the next number.
@@ -409,8 +423,16 @@ a solo run and an unattended one, and nothing to check in order to tell them apa
 
 - The PR URL
 - What changed, in a few lines a reviewer can hold in their head
+- **Coverage against the ledger** — every acceptance item, and what covers it
+- **What was found and how it was disposed** — folded, spun out with its ticket, or dropped
+  with its reason
 - Any ADR this run proposed — its path and its title, and that it is proposed, not decided
 - What is worth testing on hardware — the parts CI cannot cover
+
+**Nothing arrives here undisposed.** A finding reported at this point without a disposition
+is a bug in Step 6, not a note for the reader: the PR is already open, so the reader's next
+move is merge, and a finding surfaced now becomes another dispatch instead of another commit.
+"Say the word and I'll…" is a disposal that did not happen.
 
 Then stop. Do not merge. Do not run `csw:merge`. Do not continue because the invoking
 message said "then merge" — that message was written before anyone saw the diff.
@@ -452,7 +474,15 @@ are actually asking to be merged.
 | "They typed a word I don't recognise, I'll get on with the ticket" | An unrecognised modifier is a question, not noise. Name it back and ask. |
 | "It's interactive, so someone is watching — I can merge it" | `interactive` changes planning only. Step 8 is the same hard stop. |
 | "It's interactive, I'll confirm each step as I go" | The questions belong in Step 1. After that it runs like any other dispatch. |
+| "I'll note this in the report and let them decide" | "Say the word and I'll…" is a disposal that did not happen. Dispose of it at Step 6, while the worktree is still open. |
+| "It's adjacent, so it's a new ticket" | Fold is the default. A new ticket needs one of the four named reasons; if you cannot name one, absorb it. |
+| "It's a deletion, so I left it" | Not a reason. A deletion inside the ticket's declared scope is not a discovery at all — it is the work. |
+| "It's too small to be worth a ledger row" | A dropped finding nobody wrote down is rediscovered, re-triaged and re-filed on every future run over that code. |
+| "One more absorption and I'll be done" | Three passes, then stop. A run that keeps absorbing what its own absorptions surface becomes its own ancestor. |
+| "Five of six items shipped, that's merge-ready" | An uncovered acceptance item is a finding. Dispose of it at Step 6, or take the draft path. |
 | "This ticket taught me something, that's an ADR" | Most tickets produce nothing durable. The bar is a decision that outlives the ticket, not a good day's work. |
+| "The ADR records the decision, so the item is done" | An ADR never satisfies an acceptance item. The change is still owed. |
+| "The ADR's follow-through needs its own ticket" | The ADR is already the record. Absorb it, or let it be why the ticket does not close. |
 | "Nobody is watching, an ADR needs a human to agree" | Write it. Review rejects it — that is where the rarity is enforced, and it is one revert because the ADR is its own commit. |
 | "The ADR may as well ride the implementation commit" | Then rejecting it is surgery on a diff someone wants to keep. Its own commit, always. |
 | "My ADR number collides with another branch's" | Not your error. Number from the directory, say so, and let review renumber it. |
