@@ -62,6 +62,65 @@ if [ "$have_proc" = "1" ]; then
   assert_status 0 "an empty worktree exits 0" -- "$SERVICES" report "$empty"
   assert_contains "$(cd / && "$SERVICES" report "$empty")" "nothing" \
     "an empty result says so rather than printing nothing at all"
+
+  # --- stop: the whole process group, and only inside the worktree ---
+  wt3=$(mktemp -d); TMPDIRS+=("$wt3")
+  keep=$(mktemp -d); TMPDIRS+=("$keep")
+  # setsid gives the tree its own process group, which is what a dev server
+  # started by another session has. The child is the leaf that would hold the
+  # port: signalling only the parent leaves it running, which is the failure
+  # this targets.
+  setsid bash -c "cd '$wt3' && sleep 300 & sleep 300" >/dev/null 2>&1 &
+  ( cd "$keep" && exec sleep 300 ) & keep_pid=$!
+  sleep 0.5
+
+  out=$("$SERVICES" stop "$wt3" --grace 1)
+  # It names what it is about to interrupt before interrupting it. Unprompted
+  # and destructive is only reviewable if it says what it touched.
+  assert_contains "$out" "sleep" "stop names the command it interrupted"
+  assert_contains "$out" "stopped:" "stop reports a closing summary"
+  sleep 0.5
+  survivors=""
+  for p in $(pgrep -x sleep 2>/dev/null); do
+    [ "$(readlink "/proc/$p/cwd" 2>/dev/null)" = "$wt3" ] && survivors="$survivors $p"
+  done
+  assert_eq "$survivors" "" "stop leaves nothing running from the worktree, leaves included"
+  assert_eq "$(kill -0 "$keep_pid" 2>/dev/null && printf alive)" "alive" \
+    "stop leaves a process outside the worktree alone"
+  kill "$keep_pid" 2>/dev/null; wait "$keep_pid" 2>/dev/null
+
+  # The case that makes signalling the *group* load-bearing rather than
+  # decorative: a descendant that chdir'd out of the worktree. Discovery cannot
+  # see it -- its cwd names somewhere else entirely -- but it belongs to a tree
+  # that originated in the worktree, and it is what would still be holding the
+  # port. Signalling the found pids one by one leaves it running.
+  wt4=$(mktemp -d); TMPDIRS+=("$wt4")
+  elsewhere_dir=$(mktemp -d); TMPDIRS+=("$elsewhere_dir")
+  marker="$elsewhere_dir/strayed.pid"
+  setsid bash -c "cd '$wt4' && { cd '$elsewhere_dir' && sleep 300 & echo \$! >'$marker'; } && sleep 300" \
+    >/dev/null 2>&1 &
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -s "$marker" ] && break
+    sleep 0.1
+  done
+  strayed=$(cat "$marker" 2>/dev/null)
+  # It really did chdir away, so discovery genuinely cannot reach it.
+  assert_eq "$(readlink "/proc/$strayed/cwd" 2>/dev/null)" "$elsewhere_dir" \
+    "the strayed descendant's cwd is outside the worktree"
+  seen=$("$SERVICES" json "$wt4" | jq --argjson p "${strayed:-0}" '[.processes[].pid] | index($p)')
+  assert_eq "$seen" "null" "discovery cannot see the strayed descendant"
+
+  "$SERVICES" stop "$wt4" --grace 1 >/dev/null
+  sleep 0.5
+  assert_eq "$(kill -0 "$strayed" 2>/dev/null && printf alive)" "" \
+    "the strayed descendant goes with its process group"
+
+  # Stopping nothing is success, and says so rather than passing over in silence.
+  quiet=$(mktemp -d); TMPDIRS+=("$quiet")
+  assert_status 0 "stopping an empty worktree exits 0" -- "$SERVICES" stop "$quiet"
+  assert_contains "$(cd / && "$SERVICES" stop "$quiet")" "nothing" \
+    "the empty teardown is reported, not passed over in silence"
+  assert_status 2 "--grace needs a number" -- "$SERVICES" stop "$quiet" --grace soon
 fi
 
 # --- Arm 2: compose projects, by the label the runtime already keeps ---
