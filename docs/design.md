@@ -95,7 +95,9 @@ Runs the configured validate command and any gates the diff triggers. Convention
 push, open the PR.
 
 **Then it stops.** Hold for review is a hard stop, not a checkpoint to talk past. The report
-names the PR, what changed, and what is worth testing on hardware.
+names the PR, what changed, how it covers the ticket's acceptance list, what the run found and
+how each finding was disposed, any ADR it proposes, what merging it would unblock, and what is
+worth testing on hardware.
 
 ## Phase 2 — Merge
 

@@ -472,6 +472,64 @@ advice, not a gate: an ADR written without touching a README has failed nothing.
 A `csw:batch` dispatch does all of this identically. There is nothing here that differs between
 a solo run and an unattended one, and nothing to check in order to tell them apart.
 
+### Before the stop: say what this unblocks
+
+A dispatch that takes a ticket to a PR has usually just cleared something out of another
+ticket's way. The relation is already in the tracker and nothing reads it back, so the win is
+real and invisible: the operator ends the night several tickets deep, without learning that the
+objective they started with became runnable an hour ago.
+
+Ask the tracker what this ticket blocks:
+
+```bash
+# tracker: github
+gh issue view <number> --json blocking
+```
+
+For `linear`, `get_issue` with `includeRelations: true`.
+
+`tracker: none`, or a tracker with no relation model at all — **skip the section silently.** No
+line, no apology for having none. And the relations come from the tracker's own relation
+fields, **never from prose**: `depends on #12` written in a description is a sentence, not a
+relation, and a dispatch that reads dependencies out of English reports ones nobody recorded.
+
+**Blocks nothing — print nothing at all.** No "this unblocks nothing" line. Blocking nothing is
+the common case, and a line on every dispatch is exactly what trains the reader to skip the
+section on the night it matters.
+
+Otherwise read each blocked ticket's own blockers back. **Drop any that is itself
+already closed** — the connection carries those too, and a finished ticket is waiting on
+nothing. Each node also carries `repository.nameWithOwner`, so one in another repo needs
+`--repo`:
+
+```bash
+gh issue view <n> --repo <owner/repo> --json number,title,blockedBy
+```
+
+**Count only the blockers still open, and leave this ticket out of the count.** `blockedBy`
+carries closed blockers too, so a raw `totalCount` reports a ticket as blocked by work that
+finished last month — which reads as "still blocked" and buries the completion this section
+exists to surface.
+
+Report it as conditional, because it is. **Merging this PR** is what clears the blocker; Step 8
+holds an open PR and a ticket nobody has closed:
+
+```
+Merging this PR unblocks:
+  #667  Measure the wedge rate under load  — no blockers left. Ready to run.
+  #671  Retire the old sampler             — still blocked by #669.
+```
+
+**"No blockers left" is the whole point.** A partial unblock is worth its one line; a full one is
+the thing somebody would change their afternoon over, so it is said in words rather than left to
+be worked out from a count.
+
+**Report only. Do not move anything.** No promoting the unblocked ticket out of the backlog, no
+re-prioritising, no starting it, no filing the relation that was missing. This pass reads the
+tracker and **never modifies** any ticket but the one the dispatch was sent for. A dispatch that
+reaches into the tracker and changes the state of a ticket it was not dispatched for is a much
+larger and more surprising change than the two lines it was asked for.
+
 **Hold for review is a hard stop, not a checkpoint to talk past.** Report:
 
 - The PR URL
@@ -480,6 +538,8 @@ a solo run and an unattended one, and nothing to check in order to tell them apa
 - **What was found and how it was disposed** — folded, spun out with its ticket, or dropped
   with its reason
 - Any ADR this run proposed — its path and its title, and that it is proposed, not decided
+- **What merging this unblocks** — the tickets this one blocks, and which of them are left with
+  no blockers at all. Nothing at all where it blocks nothing.
 - What is worth testing on hardware — the parts CI cannot cover
 
 **Nothing arrives here undisposed.** A finding reported at this point without a disposition
@@ -506,6 +566,9 @@ would not retry. In every one of those cases:
    comment.
 3. Leave the ticket In Progress.
 4. Report what stopped you.
+5. Run the unblock pass above and report it here too. A draft closes nothing, so name what
+   **would be unblocked** once this ticket lands rather than what is unblocked now — that is
+   the context somebody uses to decide whether to push the draft over the line.
 
 Draft is load-bearing. Preview-environment automation filters drafts out, so unfinished work
 survives and stays reviewable without polluting the environment used to review the PRs that
@@ -541,3 +604,6 @@ are actually asking to be merged.
 | "Nobody is watching, an ADR needs a human to agree" | Write it. Review rejects it — that is where the rarity is enforced, and it is one revert because the ADR is its own commit. |
 | "The ADR may as well ride the implementation commit" | Then rejecting it is surgery on a diff someone wants to keep. Its own commit, always. |
 | "My ADR number collides with another branch's" | Not your error. Number from the directory, say so, and let review renumber it. |
+| "It blocks nothing, I'll say so for completeness" | Blocking nothing prints nothing. A line on every dispatch is what trains the reader to skip the section on the night it matters. |
+| "It unblocks something, so I'll move that ticket along" | Report only. Changing the state of a ticket nobody dispatched you for is a much larger change than the line you were asked for. |
+| "The description says it depends on #12, that's a relation" | It is a sentence. Relations come from the tracker's relation fields or the section does not run. |

@@ -312,7 +312,10 @@ assert_contains "$work_red_flags" "interactive" \
 # The pass lives at the top of Step 8, before the report, because Step 7 has already opened the
 # PR by then and the ADR rides it as a second commit.
 adr_start='^### Before the stop: did this produce a decision that outlives the ticket\?'
-adr_end='^\*\*Hold for review is a hard stop'
+# The ADR pass now ends at the unblock pass rather than at the report, so the region stays the
+# ADR's own. Left at "Hold for review" it would swallow whatever section is inserted between
+# them, and a needle matching from that section is a guard that no longer bites on a revert.
+adr_end='^### Before the stop: say what this unblocks'
 # A repo that keeps no ADRs must never see any of this, which is what the empty default buys.
 assert_guards "$work" "$adr_start" "$adr_end" \
   "csw-config get adrDir" "work: the ADR pass is gated on adrDir, so repos without ADRs never see it"
@@ -368,6 +371,60 @@ assert_contains "$work_red_flags" "Say the word" \
   "work: red flags name the deferral phrase that is a disposal that did not happen"
 assert_contains "$work_red_flags" "its own ancestor" \
   "work: red flags catch an absorption loop that will not terminate"
+
+# --- work: Step 8 says what the dispatch unblocked ---
+#
+# A dispatch takes a ticket to a PR; that ticket was the last thing blocking another one; and
+# nothing anywhere says so. The relation is already in the tracker, so the win is real and
+# invisible — the operator finishes the night without learning that the thing they actually
+# came for is now runnable. This is a read and a few lines of report, not new bookkeeping.
+unblock_start='^### Before the stop: say what this unblocks'
+unblock_end='^\*\*Hold for review is a hard stop'
+# The relation has to come from the tracker. Reading it out of the description is how a
+# dispatch invents a dependency nobody recorded and reports it as fact.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "--json blocking" "work: the unblock report reads the relation from the tracker"
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "never from prose" "work: relations are never synthesised out of the ticket text"
+# A tracker with no relations must produce no section, not an apology for having none. Same
+# opt-in shape as adrDir and baseline: a repo that never adopted the concept never sees it.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "skip the section silently" "work: a tracker without relations is skipped silently"
+# Blocking nothing is the common case. A "this unblocks nothing" line every dispatch is noise
+# that trains the reader to skip the section on the night it matters.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "print nothing at all" "work: blocking nothing produces no output"
+# The whole point. A partial unblock is worth a line; a full one is what changes somebody's
+# afternoon, and it has to be findable without counting.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "no blockers left" "work: a fully unblocked ticket is called out distinctly"
+# The blocking connection carries closed issues as well, and a ticket that is already finished
+# is not waiting on anything. Reporting it as unblocked is a line about work nobody is doing.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "already closed" "work: a blocked ticket that has itself closed is not reported"
+# blockedBy carries closed blockers too, so a raw totalCount reports a ticket as blocked by
+# work that finished last month — the exact false negative that keeps the win invisible.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "still open" "work: remaining blockers count only the open ones"
+# Reaching into a ticket this dispatch was not sent for is a far larger and more surprising
+# change than the report. The section reads; it must never write.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "Report only" "work: the unblock pass reads the tracker and changes nothing"
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "never modifies" "work: no ticket but the dispatched one is touched"
+# csw:work never merges, so at Step 8 nothing is closed and nothing is unblocked yet. Reporting
+# it as done would be a claim the dispatch is in no position to make.
+assert_guards "$work" "$unblock_start" "$unblock_end" \
+  "Merging this PR" "work: the unblock report is conditional on the merge that has not happened"
+# The report is the deliverable, so the bullet list has to name it or the section feeds nothing.
+assert_guards "$work" '^\*\*Hold for review is a hard stop' '^Then stop\.' \
+  "unblocks" "work: Step 8's report names what the ticket unblocks"
+# On the draft path it is the context that decides whether somebody pushes the draft over the
+# line, which makes it worth more there than on the happy path, not less.
+assert_guards "$work" '^## Step 9: When it does not reach merge-ready' '^## Red flags' \
+  "would be unblocked" "work: the draft path reports what finishing the ticket would unblock"
+assert_contains "$work_red_flags" "unblock" \
+  "work: red flags catch the unblock report being skipped or acted on"
 
 # --- prep: specs a ticket, touches nothing ---
 prep="$SKILLS/prep/SKILL.md"
