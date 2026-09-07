@@ -57,6 +57,38 @@ if [ "$have_proc" = "1" ]; then
   kill "$inside_pid" "$outside_pid" 2>/dev/null
   wait "$inside_pid" "$outside_pid" 2>/dev/null
 
+  # --- the listening port, resolved through two hops of real bookkeeping ---
+  # /proc/net/tcp maps a socket inode to a listening port, /proc/<pid>/fd maps a
+  # pid to its inodes. Nothing else in this file exercises that, and the port is
+  # the single most useful thing in the report -- it is what a human recognises
+  # a stray dev server by.
+  portdir=$(mktemp -d); TMPDIRS+=("$portdir")
+  portfile="$portdir/port"
+  # The kernel picks the port, so this never collides with whatever else is
+  # listening on the machine running the suite.
+  ( cd "$portdir" && exec python3 -c '
+import socket, sys, time
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+s.listen(1)
+with open(sys.argv[1], "w") as fh:
+    fh.write(str(s.getsockname()[1]))
+time.sleep(300)
+' "$portfile" ) & port_pid=$!
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ -s "$portfile" ] && break
+    sleep 0.1
+  done
+  bound=$(cat "$portfile" 2>/dev/null)
+  reported=$("$SERVICES" json "$portdir" \
+    | jq -c --argjson p "$port_pid" '.processes[] | select(.pid == $p) | .ports')
+  assert_eq "$reported" "[${bound:-missing}]" \
+    "the listening port is reported, resolved through /proc/net/tcp and /proc/<pid>/fd"
+  human_port=$(cd / && "$SERVICES" report "$portdir")
+  assert_contains "$human_port" ":${bound:-missing}" "the human report names the port"
+  kill "$port_pid" 2>/dev/null
+  wait "$port_pid" 2>/dev/null
+
   # Finding nothing is information, not an error -- csw-sweep's rule.
   empty=$(mktemp -d); TMPDIRS+=("$empty")
   assert_status 0 "an empty worktree exits 0" -- "$SERVICES" report "$empty"
