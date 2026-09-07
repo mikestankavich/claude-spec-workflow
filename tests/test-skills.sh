@@ -413,6 +413,23 @@ assert_guards "$cleanup" '^## Step 3: Remove this worktree and branch' \
 assert_contains "$(cat "$cleanup")" "on either path" "cleanup: pulls the base branch on both paths"
 assert_contains "$(cat "$cleanup")" "not only for the manual path" "cleanup: says the pull is not optional"
 assert_contains "$(cat "$cleanup")" "Always ask before closing" "cleanup: never closes a ticket unasked"
+
+# --- cleanup: closure is gated on coverage, not on the sweep being clean ---
+#
+# A merged PR and a clean sweep answer "did this work land"; neither answers "is it all there".
+# Proposing closure on that evidence is how a six-item ticket closes claiming six of six with
+# an item half-built — and the human is asked to confirm with nothing to check it against.
+assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
+  '**CSW scope**' "cleanup: reads the scope ledger before proposing closure"
+assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
+  "do not propose closure" "cleanup: an uncovered item blocks the closure proposal"
+# An uncovered item is unfinished work on this ticket. Spinning it out converts one incomplete
+# ticket into two tickets and a closure that was not earned.
+assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
+  "never becomes a new ticket" "cleanup: an uncovered item is not spun out"
+cleanup_red_flags=$(sed -n '/^## Red flags/,$p' "$cleanup")
+assert_contains "$cleanup_red_flags" "ledger" \
+  "cleanup: red flags catch closure proposed on a merge rather than on coverage"
 # csw-sweep's `[gone]` arm reads `%(upstream:track)`, which only says `[gone]` once the
 # remote-tracking ref is missing locally — and a plain `git pull` does not prune, so a branch
 # deleted on the forge stays invisible to it. The sweep cannot fix this itself (it must never

@@ -281,6 +281,24 @@ A platform ticket is not done while its docs counterpart is still open. Report t
 find — and when the scoped search comes back empty, report that too. `[]` is the answer this
 step is usually looking for, and saying so is what shows it ran.
 
+### Before proposing closure, check coverage
+
+Read the ticket's `**CSW scope**` comment and account for every item in its `## Acceptance`
+list against the merged PRs. A merged PR and a clean sweep answer *did this work land*; neither
+answers *is it all there*, and proposing closure on that evidence is how a ticket closes
+claiming everything shipped with an item half-built.
+
+- **Every item covered** — say so, name what covers each, and go on to propose closure.
+- **Any item not covered** — **do not propose closure.** Say which items are uncovered and stop
+  there. The ticket stays open, and it is in exactly the right shape to re-dispatch.
+- **No ledger on the ticket** — say that too. A ticket with no acceptance list cannot be
+  checked, so closure would rest on the human's recollection rather than on evidence, and they
+  should know which of the two they are being asked for.
+
+**An item on the ledger never becomes a new ticket.** An uncovered item is unfinished work on
+*this* ticket. Spinning it out converts one incomplete ticket into two tickets and a closure
+that was not earned, which is the accounting this ledger exists to prevent.
+
 **Always ask before closing a ticket.** Even when everything is merged, even when the sweep
 is clean, even when it is obvious. Propose it, name what you would set it to, and wait.
 
@@ -292,6 +310,8 @@ is clean, even when it is obvious. Propose it, name what you would set it to, an
 | "`gh pr view` failed, but I can check `git log` instead" | No substitute counts. Command failure is a stop, the same as an explicit non-merged state. |
 | "I'll ask before deleting the worktree" | Once the merge is confirmed, do not. Removing its worktree from there is bookkeeping. Asking again is how it gets forgotten. |
 | "The ticket is clearly done, I'll close it" | Always ask. Every time. |
+| "Everything merged and the sweep is clean, so it's done" | Merged answers whether the work landed, never whether it is all there. Read the ledger first. |
+| "One item is short — I'll file it as a follow-up" | An item on the ledger never becomes a new ticket. The ticket is not done. |
 | "The sweep is empty, nothing to report" | Report the empty sweep. Silence reads as "not checked". |
 | "`csw-sweep` printed nothing, so there's nothing stale" | Check the exit code. Non-zero means the sweep did not run — unknown is not the same as absent. |
 | "`--prune` on the pull is tidiness, I'll use plain `git pull`" | It is load-bearing. Without it `[gone]` never fires and half the sweep silently stops working. |
