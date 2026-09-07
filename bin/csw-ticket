@@ -19,13 +19,38 @@ EOF
 }
 
 slugify() {
-  local s
+  local s cut
   s=$(printf '%s' "$*" \
     | tr '[:upper:]' '[:lower:]' \
     | sed -e 's/[^a-z0-9]\{1,\}/-/g' -e 's/^-\{1,\}//' -e 's/-\{1,\}$//')
   # Truncate to 40 characters, then drop a dash the cut may have left dangling.
-  s=$(printf '%s' "$s" | cut -c1-40 | sed -e 's/-\{1,\}$//')
-  printf '%s' "$s"
+  cut=$(printf '%s' "$s" | cut -c1-40 | sed -e 's/-\{1,\}$//')
+
+  # The cut counts characters and knows nothing of what it is cutting, so it
+  # can land *inside* a trailing ticket reference and leave a shorter but still
+  # valid one behind: "...-tra-1206" truncated to "...-tra-120" names a real,
+  # unrelated ticket. Trackers that scan branch names act on that — Linear
+  # dragged TRA-120 out of Done for a PR whose body correctly said TRA-1206 —
+  # and nothing errors, because the wrong ticket is a real ticket.
+  #
+  # So drop any ticket-shaped trailing segment. Repeat: one strip can expose
+  # another underneath ("...-eng-45-tra-120"), and the tracker matches whatever
+  # is left. Each pass strictly shortens, so this terminates, and the pattern
+  # needs a dash *before* the letters, so a slug that is itself a reference is
+  # never consumed.
+  #
+  # Only when the cut actually shortened the slug. An untruncated title is what
+  # its author wrote, and stripping there would eat ordinary tails like
+  # "roadmap-for-2026" that were never bisected out of anything. Losing a
+  # trailing segment costs nothing in readability — generated names already
+  # tolerate partial trailing words like "...-and-just-ba" — but it is still
+  # not a licence to rewrite titles the cut never touched.
+  if [ "$cut" != "$s" ]; then
+    while printf '%s' "$cut" | grep -q -- '-[a-z][a-z]*-[0-9][0-9]*$'; do
+      cut=$(printf '%s' "$cut" | sed -e 's/-[a-z][a-z]*-[0-9][0-9]*$//')
+    done
+  fi
+  printf '%s' "$cut"
 }
 
 # A configured ticketPrefix must itself be parseable back out of a normalised
