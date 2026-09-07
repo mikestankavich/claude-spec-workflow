@@ -223,4 +223,54 @@ assert_contains "$down" "unknown, not absent" \
 assert_status 0 "a docker that will not answer is not an error" -- \
   in_dir "$repo2" env CSW_SERVICES_DOCKER="$fakebin/docker-down" "$SERVICES" report "$wt2"
 
+# --- exclusion 1: supervised units, against a fake proc root ---
+# A systemd --user unit is designed to outlive every session, and the test is
+# supervision rather than uptime: an 18-hour supervised bridge is correct and a
+# 10-hour orphaned container is not, and nothing that only looks at age can tell
+# them apart. There is no way to create a real user unit in a test, so the
+# classifier is exercised against the bookkeeping it actually reads.
+fakeproc=$(mktemp -d); TMPDIRS+=("$fakeproc")
+wt5=$(mktemp -d); TMPDIRS+=("$wt5")
+printf '99999.0 99999.0\n' >"$fakeproc/uptime"
+mkdir -p "$fakeproc/self"
+
+mkproc() { # pid cgroup-leaf
+  local d="$fakeproc/$1"
+  mkdir -p "$d/fd"
+  ln -sfn "$wt5" "$d/cwd"
+  # /proc/<pid>/stat with a parenthesised comm that itself contains a space and
+  # a ')', which is what breaks a naive whitespace split. Post-comm fields are
+  # state, ppid, pgrp, ... with starttime the 20th.
+  printf '%s (node (dev) run) S 1 %s 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 100 0 0 0\n' "$1" "$1" >"$d/stat"
+  printf 'Name:\tfakeproc\nPPid:\t1\n' >"$d/status"
+  printf 'fake\0proc\0' >"$d/cmdline"
+  printf '0::/user.slice/user-1000.slice/user@1000.service/%s\n' "$2" >"$d/cgroup"
+}
+mkproc 4001 "app.slice/bridge.service"          # supervised: systemd owns and restarts it
+mkproc 4002 "app.slice/app-vite-1234.scope"     # a session merely launched it
+
+fake_pids=$(CSW_SERVICES_PROC="$fakeproc" CSW_SERVICES_DOCKER=/nonexistent-docker \
+  "$SERVICES" json "$wt5" | jq -c '[.processes[].pid]')
+assert_eq "$fake_pids" "[4002]" "a supervised .service unit is excluded; a .scope is not"
+
+# The parenthesised comm is parsed correctly, so pgrp reads as a pgid rather
+# than as some later field entirely.
+fake_pgid=$(CSW_SERVICES_PROC="$fakeproc" CSW_SERVICES_DOCKER=/nonexistent-docker \
+  "$SERVICES" json "$wt5" | jq -c '.processes[0].pgid')
+assert_eq "$fake_pgid" "4002" "a comm containing spaces and parens does not shift the field offsets"
+
+# --- the platform gap is stated, never rendered as an empty result ---
+noproc=$(mktemp -d); TMPDIRS+=("$noproc")   # no self/, so host discovery is unsupported
+unsupported=$(CSW_SERVICES_PROC="$noproc" CSW_SERVICES_DOCKER=/nonexistent-docker \
+  "$SERVICES" report "$wt5")
+assert_contains "$unsupported" "not supported" \
+  "an unsupported platform says so rather than reporting an empty result"
+assert_contains "$unsupported" "lsof" "the unsupported message names the manual equivalent"
+supported_flag=$(CSW_SERVICES_PROC="$noproc" CSW_SERVICES_DOCKER=/nonexistent-docker \
+  "$SERVICES" json "$wt5" | jq -r '.hostProcessesSupported')
+assert_eq "$supported_flag" "false" "the JSON says the host arm did not run"
+assert_status 0 "an unsupported platform is not an error" -- \
+  env CSW_SERVICES_PROC="$noproc" CSW_SERVICES_DOCKER=/nonexistent-docker \
+  "$SERVICES" report "$wt5"
+
 report
