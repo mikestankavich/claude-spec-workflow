@@ -60,8 +60,21 @@ assert_eq "$("$BIN/csw-ticket" slug 'Migrate whole ingest pipeline to apis v2 to
 # neither is any short title that happens to end in one.
 assert_eq "$("$BIN/csw-ticket" slug 'Roadmap for 2026')" "roadmap-for-2026" \
   "an untruncated trailing year is left alone"
-assert_eq "$("$BIN/csw-ticket" slug 'Port the fix from TRA-120')" "port-the-fix-from-tra-120" \
-  "a slug shorter than the cut is unchanged, even where it ends in a ticket reference"
+assert_eq "$("$BIN/csw-ticket" slug 'Add nav vocabulary')" "add-nav-vocabulary" \
+  "a slug shorter than the cut is otherwise unchanged"
+
+# A reference the cut never touched is still a reference, and a tracker scanning
+# the branch name cannot tell the two apart -- "Port the fix from TRA-120" is an
+# ordinary title to write, and it reopens TRA-120 exactly as the bisected one
+# did. So the tail is stripped whether or not the cut fired, but only when it
+# names *this repo's* configured prefix: that is narrow enough to leave
+# "roadmap-for-2026" alone, which the generic letters-dash-digits rule applied
+# unconditionally would eat.
+assert_eq "$("$BIN/csw-ticket" slug 'Port the fix from TRA-120')" "port-the-fix-from" \
+  "an untruncated tail naming the configured prefix is stripped too"
+assert_eq "$("$BIN/csw-ticket" branch feat TRA-1206 'Port the fix from TRA-120')" \
+  "feat/tra-1206-port-the-fix-from" \
+  "branch: the configured-prefix tail goes, the leading reference stays"
 
 # Partial trailing words are already tolerated in generated names, which is
 # what makes dropping a whole segment cheap. This is the sibling branch from
@@ -185,6 +198,13 @@ assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" normalize '#68')" "68" "github: lead
 assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" number 68)" "68" "github: number of a bare reference"
 assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" branch feat 68 'Add the prep pass')" \
   "feat/68-add-the-prep-pass" "github: branch name from a bare issue number"
+
+# With no ticketPrefix there is no repo-local reference shape to protect, and
+# GitHub does not reopen an issue from a branch name anyway. A foreign tail the
+# cut never touched is left exactly as written.
+assert_eq "$(in_dir "$gh" "$BIN/csw-ticket" slug 'Port the fix from TRA-120')" \
+  "port-the-fix-from-tra-120" \
+  "github: no configured prefix, so an untruncated foreign tail is left alone"
 
 # An explicit prefix still wins if someone configures one alongside github.
 ghp=$(make_repo)

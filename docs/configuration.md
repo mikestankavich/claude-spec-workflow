@@ -24,7 +24,7 @@ csw-config path          # which file it read, if any
 | `validate` | `""` | The one command that must pass before a PR opens. Empty means the repo declared none, and CSW will say so rather than guess. |
 | `baseline` | `""` | A cheap command `/csw:work` runs at Step 1.5, in the main checkout, before it claims the ticket or opens a worktree. Its subject is the environment, not the change. Empty means the repo declared none and the step never runs. See below. |
 | `worktreeDir` | `".worktrees"` | Where fallback worktrees go. Must be gitignored. Ignored when a native worktree tool is available. |
-| `branchPattern` | `"<type>/<ticket>-<slug>"` | Branch name template. Tokens: `<type>`, `<ticket>` (lowercased), `<slug>` (from the title, max 40 chars). |
+| `branchPattern` | `"<type>/<ticket>-<slug>"` | Branch name template. Tokens: `<type>`, `<ticket>` (lowercased), `<slug>` (from the title, max 40 chars, with any trailing ticket reference dropped so the length cut cannot leave a valid id in the tail). |
 | `adrDir` | `""` | Where this repo keeps its architecture decision records, e.g. `docs/adr`. Non-empty and `/csw:work` asks, once, whether the run produced a decision that outlives its ticket. Empty and it never asks. See below. |
 | `gates` | `[]` | Extra validation triggered by which files changed. See below. |
 | `batch.maxTickets` | `3` | Cap on a single `/csw:batch` run. |
