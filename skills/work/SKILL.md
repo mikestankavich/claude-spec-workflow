@@ -1,13 +1,15 @@
 ---
 name: work
-description: Dispatch a tracker ticket into an isolated worktree and drive it autonomously to an open pull request, then stop for review. Pass `interactive` to brainstorm the ticket with a human before planning it. Use when asked to work a ticket end-to-end.
-when_to_use: "/csw:work 1088", "work ENG-1088", "work 1088 autonomous to PR then hold for review", "take ENG-1088 to a PR", "/csw:work 1088 interactive"
-argument-hint: "[ticket-ref] [interactive]"
+description: Dispatch a tracker ticket into an isolated worktree and drive it autonomously to an open pull request, then stop for review. Pass `interactive` to brainstorm the ticket with a human before planning it, or a sentence of editorial direction as a rider. Use when asked to work a ticket end-to-end.
+when_to_use: "/csw:work 1088", "work ENG-1088", "work 1088 autonomous to PR then hold for review", "take ENG-1088 to a PR", "/csw:work 1088 interactive", "/csw:work 1088 this ticket is an epic, review for completion"
+argument-hint: "[ticket-ref] [interactive] [editorial rider]"
 ---
 
 # Work a ticket to a pull request
 
-**Announce at start:** "Using csw:work to take <ticket> to a pull request."
+**Announce at start:** "Using csw:work to take <ticket> to a pull request." Where the
+invocation carried an editorial rider — Step 1 — echo it verbatim on that same line:
+`— rider: "<what they wrote>"`.
 
 Invocation: $ARGUMENTS
 
@@ -22,10 +24,9 @@ If `csw-config path` prints nothing, this repo has no `.claude/csw.json`. Say so
 defaults you are about to use, and ask whether to continue or write a config first. Do not
 silently guess a validate command.
 
-## Step 1: Resolve the ticket, and the modifier
+## Step 1: Resolve the ticket, the modifier, and the rider
 
-The invocation is a ticket reference, optionally followed by one modifier word. Split it on
-whitespace: the first token is the reference, whatever follows it is the modifier.
+The first token of the invocation is the ticket reference:
 
 ```bash
 csw-ticket normalize "<the first token of the invocation>"
@@ -36,7 +37,10 @@ If the invocation carried no reference, ask which ticket. Do not pick one.
 If normalisation exits non-zero, report its message and stop — a mistyped reference is
 exactly the failure this command exists to prevent.
 
-Then read the modifier:
+### The modifier, and then the rider
+
+Split what is left on whitespace and **consume the known modifier keywords first**.
+`interactive` is the only one this skill defines:
 
 - **`interactive`** — run **superpowers:brainstorming** against the ticket before the Step 5
   chain. Surface the questions and wait for the answers. Do not run unattended. This is the
@@ -44,14 +48,59 @@ Then read the modifier:
   defensible shape; answering your own questions is exactly the thing it exists to prevent.
 - **No modifier** — autonomous, exactly as the rest of this skill describes. Brainstorming is
   skipped because the ticket is the agreed brief.
-- **An unrecognised modifier is not ignored.** Say what was passed, say it is not recognised,
-  and ask whether to proceed autonomously — then wait. Silently discarding a word someone
-  deliberately typed is how a dispatch does something other than what was asked, and the word
-  they were reaching for may well have been `interactive`.
 
 `interactive` changes only how the work is planned. Steps 6 through 9 are untouched: the same
 validation, the same gates, the same pull request, the same hard stop. An interactive run
 still ends at an open pull request and still never merges.
+
+**Then read whatever is still left over.** `csw:merge` parses its own invocation the same way —
+one grammar, both skills — and the reading is by word count:
+
+| Remainder | Reading |
+|---|---|
+| Nothing | No rider. The ticket is the whole brief. |
+| **One word** | Suspected typo. Name it and ask. |
+| **Two or more words** | An **editorial rider**. Accept it. |
+
+The one-word row is the rule this skill already had, and it stays exactly as it was.
+**An unrecognised modifier is not ignored.** Say what was passed, say it is not recognised,
+and ask whether to proceed autonomously — then wait. Silently discarding a word someone
+deliberately typed is how a dispatch does something other than what was asked, and the word
+they were reaching for may well have been `interactive`.
+
+That rule is right for a typo and wrong for a sentence.
+`/csw:work 92 this ticket is an epic, review for completion and tag for deploy` is not a
+mis-remembered keyword, and the correct response to a clause of editorial direction is to use
+it rather than to ask whether to discard it. Splitting on word count keeps that mechanical, and
+therefore testable: it is not a judgement about whether something *sounds like* direction.
+
+**A rider is echoed in the announce line, always:**
+
+> Using csw:work to take #92 to a pull request — rider: "this ticket is an epic, review for
+> completion and tag for deploy"
+
+A rider that quietly changes what a dispatch does is the failure this must not introduce.
+Visible at the top of the run is the price of accepting it at all.
+
+### A rider is context, never authority
+
+A rider adds to the brief. It does not grant permission, and every line below is a permission
+someone will eventually try to read into one:
+
+- **It cannot authorise a merge.** Step 8's hard stop already refuses "then merge" on the
+  grounds that the instruction was written before anyone saw the diff. A rider is that same
+  instruction in that same position, and gets that same answer.
+- **It cannot waive validation.** Step 6's gates are gates. "The suite is flaky, ship it
+  anyway" is a rider asking for a gate to be skipped, and a skipped gate is a gate that did not
+  run — that is Step 9, not a licence.
+- **It cannot substitute for the ticket.** The ticket is still the brief and the rider is a
+  note in the margin of it. Read the whole description exactly as Step 2 says to; a rider never
+  replaces reading it, and never replaces the `**CSW prep**` comment either.
+- **A rider that contradicts the ticket, or a decision recorded in a `**CSW prep**` comment, is
+  named back and asked about** — not silently preferred, and not silently dropped. Prep's
+  decisions carry their reasoning precisely so they can be overturned deliberately. Dispatched
+  from `/csw:batch` there is nobody to ask, so the contradiction becomes the question on the
+  ticket and the run takes Step 9's draft path, exactly as an unanswered prep question does.
 
 ## Step 1.5: Establish that the environment was already sane
 
@@ -590,6 +639,10 @@ are actually asking to be merged.
 | "The baseline is red but my change will probably fix it" | It was red before you started. Report it and ask — that is the whole reason Step 1.5 runs before anything exists to suspect. |
 | "The baseline was green, so the gate is half done" | Different subject. A green baseline says the machine was clean, and nothing at all about the change. |
 | "They typed a word I don't recognise, I'll get on with the ticket" | An unrecognised modifier is a question, not noise. Name it back and ask. |
+| "They typed a whole sentence, so I'll ask whether to discard it" | One word is a typo. Two or more is an editorial rider — accept it, and echo it in the announce line. |
+| "The rider says to merge once it's green" | A rider is context, never authority. Step 8 is the same hard stop, and it already answers "then merge". |
+| "The rider says the suite is flaky, so I can ship past it" | A rider cannot waive a gate. A skipped gate is a gate that did not run. Step 9. |
+| "The rider contradicts the ticket, so it supersedes it" | Neither silently wins. Name it back and ask — and unattended, that is a Step 9 draft. |
 | "It's interactive, so someone is watching — I can merge it" | `interactive` changes planning only. Step 8 is the same hard stop. |
 | "It's interactive, I'll confirm each step as I go" | The questions belong in Step 1. After that it runs like any other dispatch. |
 | "I'll note this in the report and let them decide" | "Say the word and I'll…" is a disposal that did not happen. Dispose of it at Step 6, while the worktree is still open. |

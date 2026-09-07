@@ -20,6 +20,14 @@ done
 assert_contains "$(cat "$readme")" "its own context" \
   "README says a batch isolates each ticket's context, not only its worktree"
 
+# #109: a rider is accepted silently only in the sense that nothing stops to ask about it —
+# the README is where someone learns they can write one at all, and that writing one buys
+# context rather than permission.
+assert_contains "$(cat "$readme")" "rider" \
+  "README documents the editorial rider both phases accept"
+assert_contains "$(cat "$readme")" "context, never authority" \
+  "README says a rider adds to the brief rather than granting permission"
+
 for gone in "/csw:spec" "/csw:plan" "/csw:build" "/csw:ship"; do
   if grep -q -- "$gone" "$readme"; then
     FAILURES=$((FAILURES + 1)); printf 'FAIL README still advertises %s\n' "$gone" >&2
