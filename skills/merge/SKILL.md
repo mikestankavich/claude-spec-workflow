@@ -2,22 +2,77 @@
 name: merge
 description: Merge the reviewed pull request for the current branch, then hand straight off to cleanup. Use when a human green-lights an open PR.
 when_to_use: "go for merge", "diffs look good", "merge it", "ship it", "land it", "approved, merge"
+argument-hint: "[pr-or-ticket-ref]"
 ---
 
 # Merge a reviewed pull request
 
 **Announce at start:** "Using csw:merge to land PR #<n>."
 
-## Step 1: Find the PR
+## Step 1: Resolve the PR
+
+The invocation optionally carries one reference. **Bare `/csw:merge` is unchanged** — it means
+the pull request for the current branch:
 
 ```bash
 gh pr view --json number,title,url,isDraft,mergeable,mergeStateStatus,baseRefName,headRefName
 ```
 
-If there is no PR for the current branch, say so and stop. If the PR is a **draft**, stop:
-draft means the work told you it was not a merge candidate. Ask whether to mark it ready
-first. If more than one PR is open for this branch, list them and ask which to merge. Never
-pick.
+**`/csw:merge <ref>` names the pull request, and the reference is not decorative.** Resolve it.
+Never fall through to the current branch's PR because the reference was harder to read than
+`gh pr view` with no argument.
+
+- **A prefixed reference** — `ENG-92` — is a **ticket**. Resolve it to the PR that closes it,
+  below.
+- **A bare number, or `#92`, on `tracker: github`** is either an issue or a pull request.
+  GitHub numbers both out of one sequence per repository, so the number is never ambiguous
+  about which object it names — but you have to ask, and you have to ask about the **PR**:
+
+  ```bash
+  gh pr view 92 --json number,title,url,isDraft,mergeable,mergeStateStatus,baseRefName,headRefName
+  ```
+
+  It resolves, and 92 is the pull request. It fails with `Could not resolve to a PullRequest
+  with the number of 92`, and 92 is an issue — resolve it to its PR below.
+
+  **Do not run `gh issue view` to make this decision.** GitHub models a pull request as a kind
+  of issue, so `gh issue view <n>` on a PR number *succeeds* and hands back the PR. Every
+  number looks like an issue to it, which is why the discriminating question is the one asked
+  above.
+
+- **A bare number on any other tracker** is a PR number. There every ticket reference carries a
+  prefix, so a bare number has nothing else it could mean.
+
+### Ticket to pull request
+
+```bash
+gh issue view <n> --json closedByPullRequestsReferences
+```
+
+That field only sees pull requests linked by a closing keyword. `csw:work` writes `Closes
+<TICKET>` **or** `Refs <TICKET>`, and a `Refs` body links nothing at all — so an empty result
+is not yet an answer. Search before concluding there is no PR:
+
+```bash
+gh pr list --state open --search "<TICKET>" --json number,title,baseRefName,headRefName
+```
+
+### Then say which reading you used
+
+Before anything is merged, **say which reading you used** and on what basis — "PR #92, from
+issue #92", or "PR #92, named directly". A merge is one-way, and naming the object out loud is
+what lets someone stop the run while stopping is still free.
+
+### Stops
+
+- **No PR for the current branch**, on a bare invocation. Say so and stop.
+- **No PR for the ticket.** Say so and stop. Do not go looking for a plausible nearby branch.
+- **More than one candidate.** List them and ask which to merge. Never pick.
+- **The reference resolves to a PR that is not the current branch's PR.** Report both and ask.
+  Neither one silently wins. A reference gets stated precisely when several PRs are open, which
+  is exactly the situation in which quietly preferring one would do the most damage.
+- **The PR is a draft.** Draft means the work told you it was not a merge candidate. Ask
+  whether to mark it ready first.
 
 ## Step 2: Check that they actually said merge
 
@@ -34,14 +89,18 @@ you wait for the answer. Do not merge on a maybe.
 
 ## Step 3: Check CI
 
+Pass the number Step 1 resolved. Bare `gh pr checks` reads the *current branch's* PR, which is
+the right answer only when nobody named anything — and silently the wrong PR's CI the moment
+someone did:
+
 ```bash
-gh pr checks --watch --fail-fast
+gh pr checks <number> --watch --fail-fast
 ```
 
 - **Red** — stop. Report which checks failed and their output. Red CI ends the merge; it does
   not become a judgment call.
 - **Pending** — report what is still running and ask whether to wait or stop. If they say
-  wait, re-run `gh pr checks --watch --fail-fast` rather than idling.
+  wait, re-run `gh pr checks <number> --watch --fail-fast` rather than idling.
 - **Green** — continue.
 - **No checks configured** — `gh pr checks` finds nothing to report. Absence of checks is not
   the same as passing checks. Say so, and ask before merging.
@@ -52,11 +111,128 @@ Also check `mergeStateStatus`:
 |---|---|---|
 | `BEHIND` | The base branch moved since this PR was opened | Update the branch, let CI run again |
 | `DIRTY` | The PR has merge conflicts | Stop and report them |
-| `BLOCKED` | A protection requirement is unmet — typically a missing review | Stop and report what is required. Do not attempt the merge. |
+| `BLOCKED` | A protection requirement is either pending or unmeetable — the status does not say which | Diagnose it, below. Do not merge, and do not ask a question the API can answer. |
 | `UNSTABLE` | A non-required check is failing | Report which check, and ask before merging |
 | `HAS_HOOKS`, `UNKNOWN`, or anything unrecognised | Does not map to a known case | Do not guess. Report the state and ask. |
 
+### `BLOCKED` is two states, and the API tells you which
+
+`BLOCKED` covers both *a requirement that will be satisfied later* and *a requirement that will
+never be satisfied at all*, and the status alone cannot distinguish them. Guessing "typically a
+missing review" is how this step used to send someone to a Step 4 that had exactly one command,
+which then failed.
+
+Ask what is actually protecting the base branch. Both probes are **read-only** — a speculative
+`gh pr merge` is not the diagnosis, because Step 4's gates have not run yet and a probe that
+succeeds would land the merge ahead of them:
+
+```bash
+gh api repos/:owner/:repo/rules/branches/<baseRefName>
+```
+
+That lists every rule applying to the base, each with the `ruleset_id` it came from. For a rule
+that names a ruleset, ask who is allowed past it:
+
+```bash
+gh api repos/:owner/:repo/rulesets/<ruleset_id> --jq '{name,enforcement,bypass_actors}'
+```
+
+The answer sorts the block into one of two shapes, and they are not interchangeable:
+
+- **`--auto` — the requirement is pending.** A review requested but not yet given, a required
+  check still queued. Nothing is overridden: GitHub holds the merge and lands it once the
+  requirement is met. Offer this when the block is something that arrives on its own, and say
+  plainly that the merge will then happen later and unattended, with nobody looking again.
+- **`--admin` — the requirement is unmet and no waiting will change that.** Observed merging
+  #86: CI green, `required_approving_review_count` 0, no unresolved threads, branch 0 behind.
+  The block was a repository ruleset whose only bypass actor was the admin running the merge.
+  There was nothing to wait for; the merge either used the bypass or did not happen.
+  `bypass_actors` is what tells you this shape apart from the first — if it does not list an
+  actor the invoker is, `--admin` will not work either, and the honest report is that this PR
+  cannot be merged by this account.
+
+**`--admin` overrides a protection someone configured deliberately.**
+**It is never yours to take.**
+Report what is blocking, say which of the two shapes it is and on what evidence, and ask.
+
+What the diagnosis buys is a question that can actually be answered — "the `non_fast_forward`
+rule blocks this and you are its bypass actor, merge with `--admin`?" rather than "it says
+`BLOCKED`, what do you want to do?"
+
+Once the human authorises one, it goes on Step 4's command. `gh` rejects `--auto` and `--admin`
+together — they are answers to different questions — and `--admin` is the flag for *not meeting*
+the requirements, so it is only ever reached with the rest of Step 3 already green. It silences
+the block, not the reason for it.
+
 ## Step 4: Merge
+
+### Before the merge: retarget anything stacked on this branch
+
+`--delete-branch` removes the head branch, and **GitHub does not retarget a pull request whose
+base branch disappears — it closes it.** Observed merging a PR that had another stacked on it:
+the dependent went to `state: CLOSED`, still pointing at a branch that no longer existed, and
+reported `CONFLICTING` for a conflict it did not have.
+
+Look for dependents first:
+
+```bash
+gh pr list --state open --base "<this PR's headRefName>" --json number,title,headRefName,baseRefName
+```
+
+Anything that comes back is stacked on the branch about to be deleted. Retarget each one onto
+this PR's own base **before** merging:
+
+```bash
+gh pr edit <dependent number> --base "<this PR's baseRefName>"
+```
+
+Then say which PRs were retargeted and onto what. A silently rebased stack is the same problem
+as a silently chosen PR: correct, and invisible to anyone who would have wanted to disagree.
+
+**This has to happen before the merge, because afterwards it does not work.** Both obvious
+repairs refuse while the base branch is missing:
+
+```
+$ gh pr edit 558 --base main
+GraphQL: Cannot change the base branch of a closed pull request.
+
+$ gh pr reopen 558
+API call failed: GraphQL: Could not open the pull request.
+```
+
+The PR is closed, so its base cannot be changed; it cannot be reopened, because its base is
+gone. Recovering from there means recreating the pull request by hand and losing its review
+history — which is why this is a gate rather than a thing to notice afterwards.
+
+### Before the merge: an ADR riding in the PR
+
+```bash
+csw-config get adrDir
+```
+
+**Empty — the default — and none of the rest of this subsection runs.** A repo that keeps no
+architecture decision records sees no new prompt here, exactly as in `csw:work` Step 8.
+
+**Non-empty, and it names the directory this repo keeps its ADRs in.** Intersect it with what
+the PR actually touches:
+
+```bash
+gh pr diff <number> --name-only
+```
+
+If nothing under `<adrDir>` appears, say nothing and merge. If something does, **name it and
+confirm before merging** — the file, its title, and that merging it makes it the repo's
+standing decision.
+
+`csw:work` writes ADRs unattended, on the argument that review is the filter rather than the
+prompt. That argument only holds if something at merge time actually looks. Without this gate
+"review is the filter" means "someone was supposed to notice", and an ADR nobody read becomes a
+rule the next person gets held to.
+
+An ADR is its own commit precisely so that rejecting it here is one revert and the
+implementation stays. Say that when you ask, so declining is visibly cheap.
+
+### The merge
 
 ```bash
 gh pr merge <number> --merge --delete-branch
@@ -100,7 +276,13 @@ relies on. If Step 4 did not confirm success, stop there; do not continue into S
 Once the merge is confirmed, roughly always it is followed by cleanup: go straight into
 **csw:cleanup** without asking.
 
-The exception is when the human has explicitly said to stay put — "merge but leave the
+**Only when the merged PR was the current branch's.** `csw:cleanup` acts on the worktree you
+are standing in, not on the PR that just merged, and Step 1 can now land a PR belonging to some
+other branch entirely. Chaining after one of those would remove a worktree with unrelated work
+still in it. When the merged PR is not the current branch's, say the merge landed, say cleanup
+is being skipped and why, and leave this worktree alone.
+
+The other exception is when the human has explicitly said to stay put — "merge but leave the
 worktree, I want to check something." Then say plainly that cleanup is being skipped and
 that the worktree and branch are still there.
 
@@ -115,3 +297,11 @@ that the worktree and branch are still there.
 | "The PR is a draft but the work looks done" | Draft was a deliberate signal. Ask before promoting it. |
 | "The merge command ran, I can move on" | Check its exit status. A failed merge followed by cleanup anyway orphans the PR. |
 | "No checks means nothing to block on" | Absence of checks isn't a green light. Ask before merging. |
+| "They named a PR, but `gh pr view` already found one" | Then the stated reference was decorative and the transcript lies. Resolve what they said. |
+| "The number they gave is the branch's PR anyway" | You know that only after resolving it. Resolve it, then say which reading you used. |
+| "`BLOCKED` means someone needs to review it" | Sometimes. Ask the rules API which rule it is before reporting a cause. |
+| "`--admin` would clear this, I'll just add it" | It overrides a protection someone chose. Diagnose, report, ask. |
+| "Deleting the branch will just retarget anything stacked on it" | It closes it. Check for dependents and retarget them first. |
+| "If a stacked PR closes, I'll reopen it after" | You can't. Closed PRs won't change base, and won't reopen without one. |
+| "The ADR was in the diff they approved" | It was written unattended. Name it, so approving it is a thing someone did. |
+| "Merged, so chain into cleanup as always" | Not if it was someone else's PR. Cleanup removes *this* worktree. |

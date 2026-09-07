@@ -407,6 +407,101 @@ assert_eq "$(fm_field "$merge" 'disable-model-invocation')" "" "merge: stays mod
 assert_contains "$(cat "$merge")" "only ever entered after a confirmed merge" "merge: cleanup gated on a confirmed merge"
 assert_contains "$(cat "$merge")" "BLOCKED" "merge: covers mergeStateStatus BLOCKED"
 
+# --- merge: a stated reference is resolved, not decorative ---
+#
+# #118: `/csw:merge #117` was dispatched and Step 1 resolved the PR from the current branch,
+# so the stated number never reached anything. It happened to match. These assertions are
+# scoped to Step 1 because that is the region that resolves the reference — revert the
+# resolution and the region goes with it.
+assert_contains "$(fm_field "$merge" 'argument-hint')" "ref" "merge: takes a reference"
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "Could not resolve to a PullRequest" \
+  "merge: discriminates a PR number from an issue number by asking gh about the PR"
+# `gh issue view` on a PR number succeeds and hands back the PR, so it cannot be the
+# discriminator. A reader who does not know that will reach for it first.
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "gh issue view" \
+  "merge: names the gh issue view trap rather than leaving it to be discovered"
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "closedByPullRequestsReferences" "merge: resolves a ticket to its PR"
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "Never pick" "merge: more than one candidate is a stop, not a choice"
+# The reading has to be *said*, because a merge is one-way: naming the object is what lets
+# someone stop the run while stopping is still free.
+assert_contains "$(cat "$merge")" "say which reading" \
+  "merge: states which reading of the reference was used before merging"
+merge_red_flags=$(sed -n '/^## Red flags/,$p' "$merge")
+assert_contains "$merge_red_flags" "decorative" \
+  "merge: red flags catch a stated reference that was never read"
+
+# --- merge: BLOCKED is two states, and the skill can tell them apart ---
+#
+# #118: the table glossed BLOCKED as "typically a missing review" and Step 4 then offered one
+# command that fails. Merging #86 the block was a repository ruleset whose only bypass actor
+# was the admin running the merge — nothing about a review, and no waiting that would fix it.
+# All of this is scoped to Step 3, which is where mergeability is decided.
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "rules/branches" "merge: asks the API which rule is blocking rather than guessing"
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "bypass_actors" "merge: checks whether an admin bypass actually exists before offering --admin"
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "--auto" "merge: offers --auto for a requirement that is merely pending"
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "--admin" "merge: offers --admin for a requirement that will never be met"
+# --admin overrides a protection someone configured deliberately. The skill may name it; it
+# must never take it on its own authority.
+assert_contains "$(cat "$merge")" "never yours to take" \
+  "merge: --admin is the human's call, not the skill's"
+# The diagnosis must not be a speculative `gh pr merge`: Step 4's stacked-PR and ADR gates have
+# not run yet, so a probe that can succeed would land the merge ahead of them.
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "read-only" "merge: diagnoses BLOCKED without attempting the merge"
+
+# --- merge: --delete-branch must not close a PR stacked on this one ---
+#
+# #118: merging a PR that had another stacked on its head branch closed the dependent rather
+# than retargeting it — GitHub does not move a PR whose base is deleted. The dependent went to
+# CLOSED, still pointing at a branch that no longer existed, reporting a conflict it did not
+# have. Scoped to Step 4, which owns everything that happens around the merge command.
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "gh pr list --state open --base" "merge: looks for PRs stacked on this PR's head branch"
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "gh pr edit" "merge: retargets a stacked PR rather than letting the delete close it"
+# Recovery is the reason this is a pre-merge check and not a post-merge repair: both obvious
+# repairs refuse while the base branch is missing.
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "Cannot change the base branch of a closed pull request" \
+  "merge: shows that the after-the-fact repair does not work"
+assert_contains "$merge_red_flags" "stacked" \
+  "merge: red flags catch merging without looking for dependents"
+
+# --- merge: an ADR riding in the PR gets named before it lands ---
+#
+# #118: csw:work Step 8 writes ADRs unattended on the argument that review is the filter rather
+# than the prompt. Nothing at merge time ever looked, so "review is the filter" quietly meant
+# "someone was supposed to notice". This is the gate that makes the argument true.
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "csw-config get adrDir" "merge: gates the ADR check on the repo opting into ADRs"
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "gh pr diff" "merge: reads the PR's own file list to find an ADR"
+# The gate must be silent for the default. A repo that keeps no ADRs must see no new prompt,
+# exactly as in csw:work Step 8.
+assert_guards "$merge" '^### Before the merge: an ADR' '^### The merge' \
+  "none of the rest" "merge: an empty adrDir runs none of the ADR gate"
+
+# --- merge: everything downstream of Step 1 uses the PR Step 1 resolved ---
+#
+# Once Step 1 can resolve a PR other than the current branch's, every later command that
+# defaults to the current branch is aimed at the wrong object. `gh pr checks` with no argument
+# would gate on a different PR's CI, and csw:cleanup acts on the current worktree, so chaining
+# into it after merging someone else's PR tears down the wrong one.
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "gh pr checks <number>" "merge: checks CI for the resolved PR, not for the current branch"
+assert_guards "$merge" '^## Step 5: Chain into cleanup' '^## Red flags' \
+  "current branch" "merge: cleanup only chains when the merged PR is this worktree's"
+assert_contains "$merge_red_flags" "someone else's PR" \
+  "merge: red flags catch cleaning up a worktree the merge did not belong to"
+
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"
 assert_guards "$cleanup" '^## Step 4: Sweep for everything else' \
