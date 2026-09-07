@@ -20,6 +20,11 @@ assert_eq "$(cd "$repo" && "$BIN/csw-config" get branchPattern)" "<type>/<ticket
 # substitutes to the empty string, so assert_eq alone would pass with the default missing.
 assert_eq "$(cd "$repo" && "$BIN/csw-config" get adrDir)" "" "default adrDir is empty"
 assert_status 0 "adrDir is a known key, not an absent one" -- in_dir "$repo" "$BIN/csw-config" get adrDir
+# Empty means "this repo declared no baseline", and `/csw:work` skips Step 1.5 entirely. The
+# exit-status assertion is the load-bearing half here too: without the DEFAULTS entry, every
+# repo that has not set `baseline` gets a hard `unknown key` instead of the intended skip.
+assert_eq "$(cd "$repo" && "$BIN/csw-config" get baseline)" "" "default baseline is empty"
+assert_status 0 "baseline is a known key, not an absent one" -- in_dir "$repo" "$BIN/csw-config" get baseline
 assert_eq "$(cd "$repo" && "$BIN/csw-config" get gates)" "[]" "default gates is an empty array"
 assert_eq "$(cd "$repo" && "$BIN/csw-config" get batch.maxTickets)" "3" "default batch.maxTickets"
 assert_eq "$(cd "$repo" && "$BIN/csw-config" path)" "" "path is empty with no config file"
@@ -34,10 +39,12 @@ write_config "$repo" <<'JSON'
   "validate": "just validate",
   "worktreeDir": ".claude/worktrees",
   "adrDir": "docs/adr",
+  "baseline": "pnpm run pretest",
   "batch": { "maxTickets": 4 }
 }
 JSON
 assert_eq "$(cd "$repo" && "$BIN/csw-config" get adrDir)" "docs/adr" "override adrDir"
+assert_eq "$(cd "$repo" && "$BIN/csw-config" get baseline)" "pnpm run pretest" "override baseline"
 assert_eq "$(cd "$repo" && "$BIN/csw-config" get ticketPrefix)" "TRA" "override ticketPrefix"
 assert_eq "$(cd "$repo" && "$BIN/csw-config" get validate)" "just validate" "override validate"
 # trackerCommand replaces only the fetch, so a repo setting it keeps `tracker` too — the

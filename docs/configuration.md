@@ -22,6 +22,7 @@ csw-config path          # which file it read, if any
 | `baseBranch` | `"main"` | What PRs target, what "merged" is measured against, and where cleanup returns to. |
 | `defaultType` | `"feat"` | Conventional-commit type used when the ticket gives no signal. |
 | `validate` | `""` | The one command that must pass before a PR opens. Empty means the repo declared none, and CSW will say so rather than guess. |
+| `baseline` | `""` | A cheap command `/csw:work` runs at Step 1.5, in the main checkout, before it claims the ticket or opens a worktree. Its subject is the environment, not the change. Empty means the repo declared none and the step never runs. See below. |
 | `worktreeDir` | `".worktrees"` | Where fallback worktrees go. Must be gitignored. Ignored when a native worktree tool is available. |
 | `branchPattern` | `"<type>/<ticket>-<slug>"` | Branch name template. Tokens: `<type>`, `<ticket>` (lowercased), `<slug>` (from the title, max 40 chars). |
 | `adrDir` | `""` | Where this repo keeps its architecture decision records, e.g. `docs/adr`. Non-empty and `/csw:work` asks, once, whether the run produced a decision that outlives its ticket. Empty and it never asks. See below. |
@@ -116,6 +117,55 @@ Four things to know before setting it:
 
 The output is not validated before use: it goes straight into `csw-batch-filter`, which exits
 non-zero naming the offending field if the shape is wrong.
+
+## `baseline`
+
+`/csw:work` runs the repo's gate exactly once, at Step 6, after the work is done. So a machine
+that was **already broken before the dispatch started** presents as a failure of the change,
+twenty minutes in, with a diff layered on top of it. A dispatch cannot tell "I broke this" from
+"this was already broken", because it never observed the before state.
+
+Empty — the default — and none of this happens. There is no inference and no fallback:
+guessing a baseline command has the same failure as guessing a `validate` command, which
+`/csw:work` Step 0 already refuses to do.
+
+Non-empty, and it names the command:
+
+```json
+"baseline": "pnpm run pretest"
+```
+
+`/csw:work` runs it once at **Step 1.5** — after the ticket is resolved, before Step 2 claims
+it and before Step 4 opens the worktree. Green, and the dispatch says one line and proceeds.
+Red, and the dispatch stops and asks, naming the command and its output: the machine was
+broken before this run started, so absorbing it into a diff and meeting it again at Step 6 is
+the outcome the key exists to prevent.
+
+- **It is not a pre-run of the gate.** Reusing `validate` would double the gate on every
+  dispatch, and in a repo where the gate runs twenty minutes nobody turns that on. More to the
+  point, the subject is different: a stale service, a held port, a dead dependency, a
+  half-applied migration are machine-level and shared, and catchable by something far cheaper
+  than the full suite. A repo whose `baseline` is much narrower than its `validate` is using
+  the key correctly. A green baseline is not evidence about the work, and `/csw:work` does not
+  report it as partial gate coverage.
+- **It runs in the main checkout, not the worktree.** A fresh worktree has no installed
+  dependencies, so a baseline run inside one fails for reasons that say nothing about the
+  environment — and the conditions a baseline exists to catch are machine-level anyway.
+- **A failing baseline does not open a draft PR.** Step 9's draft path carries work that
+  exists; at Step 1.5 nothing has been built. The ticket is not claimed either, because Step 2
+  is what sets it In Progress — which is the right outcome for a failure that is not the
+  ticket's fault.
+- **It may mutate the machine, and that is it doing its job.** The exemplar above,
+  `pnpm run pretest`, sweeps held test ports, asserts a daemon is current, and sleeps for
+  hardware recovery. Repairing the environment before work starts is legitimate. Do not carry
+  over `trackerCommand`'s read-only rule by analogy: that one is read-only because
+  `/csw:batch --dry-run` runs it, where a side effect would be a surprise. A baseline runs
+  once, deliberately, at the top of a real dispatch — closer to `validate` and `gates[].run`,
+  neither of which is required to be read-only either.
+- **`/csw:batch` runs it once per dispatched ticket**, all in the main checkout. That is
+  accepted rather than fixed: the command is supposed to take seconds, and each dispatch
+  genuinely wants to know the machine is still sane by the time its turn comes. There is no
+  caching.
 
 ## `adrDir`
 

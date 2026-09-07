@@ -53,6 +53,44 @@ Then read the modifier:
 validation, the same gates, the same pull request, the same hard stop. An interactive run
 still ends at an open pull request and still never merges.
 
+## Step 1.5: Establish that the environment was already sane
+
+```bash
+csw-config get baseline    # empty means the repo declared none — skip this step entirely
+```
+
+Run whatever it prints, once, before touching anything.
+
+**Red here is not yours to fix, and that is the point.** It means the machine was broken
+before this dispatch started. Report what failed — the command and its output — and ask,
+rather than absorbing someone else's breakage into your diff and meeting it again at Step 6
+with a day's work on top. Do not take Step 9's draft path either: that path carries work that
+exists, and nothing has been built yet. The ticket is not claimed at this point either,
+because Step 2 is what sets it In Progress — which is the right outcome for a failure that is
+not the ticket's fault.
+
+Green is worth one line — say it passed, and proceed.
+
+**This is not a pre-run of the gate.** Its subject is the environment, not the change — a
+stale service, a held port, a dead dependency, a half-applied migration — so it is normally a
+much cheaper command than `validate`. Do not report a green baseline as evidence about the
+work; it says only that you started from a clean machine.
+
+Dispatched from `/csw:batch` there is **nobody to ask**, so return `failed` with the command
+and its output as the reason and let the loop record one row and move on. Do not fall into
+that skill's draft path: it is for a ticket whose work exists and did not reach merge-ready,
+and this ticket has no work at all. Every ticket in the batch will hit the same red baseline,
+and N identical rows naming one machine fault is the correct morning summary — not something
+to route around.
+
+A baseline may repair what it finds — sweeping a held port, restarting a stale daemon. That is
+it doing its job, not a side effect to avoid. `trackerCommand`'s read-only rule does not
+transfer: that one exists because `/csw:batch --dry-run` runs it.
+
+This runs here, in the main checkout, and never inside the worktree Step 4 opens. A fresh
+worktree has no installed dependencies, so a baseline run inside one fails for reasons that
+say nothing about the environment.
+
 ## Step 2: Read the ticket and claim it
 
 Read it from the tracker named by `csw-config get tracker`:
@@ -486,6 +524,8 @@ are actually asking to be merged.
 | "The description is the brief, I don't need the comments" | A `**CSW prep**` comment is part of the brief, and the answers under it are the decisions. |
 | "Prep's question is unanswered but I can infer the answer" | Then the diff carries a guess that looks like a decision. Step 9, draft. |
 | "No config file, I'll infer the validate command" | Ask. A wrong validate command means a green run that proves nothing. |
+| "The baseline is red but my change will probably fix it" | It was red before you started. Report it and ask — that is the whole reason Step 1.5 runs before anything exists to suspect. |
+| "The baseline was green, so the gate is half done" | Different subject. A green baseline says the machine was clean, and nothing at all about the change. |
 | "They typed a word I don't recognise, I'll get on with the ticket" | An unrecognised modifier is a question, not noise. Name it back and ask. |
 | "It's interactive, so someone is watching — I can merge it" | `interactive` changes planning only. Step 8 is the same hard stop. |
 | "It's interactive, I'll confirm each step as I go" | The questions belong in Step 1. After that it runs like any other dispatch. |

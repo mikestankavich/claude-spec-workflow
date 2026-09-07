@@ -13,6 +13,7 @@ DEFAULTS='{
   "baseBranch": "main",
   "defaultType": "feat",
   "validate": "",
+  "baseline": "",
   "worktreeDir": ".worktrees",
   "branchPattern": "<type>/<ticket>-<slug>",
   "adrDir": "",

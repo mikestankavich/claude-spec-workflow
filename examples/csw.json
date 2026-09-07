@@ -5,6 +5,7 @@
   "baseBranch": "main",
   "defaultType": "feat",
   "validate": "just validate",
+  "baseline": "pnpm run pretest",
   "worktreeDir": ".claude/worktrees",
   "branchPattern": "<type>/<ticket>-<slug>",
   "adrDir": "docs/adr",

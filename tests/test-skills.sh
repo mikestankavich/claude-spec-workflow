@@ -147,6 +147,49 @@ else
   PASSES=$((PASSES + 1))
 fi
 
+# --- work: Step 1.5, the baseline ---
+#
+# The gate runs once, at Step 6, after the work exists. So a machine that was already broken
+# before the dispatch started presents as a failure of the change, twenty minutes in, with a
+# diff on top of it. Step 1.5 is the only place the run can observe its own before state.
+baseline_start='^## Step 1\.5: Establish that the environment was already sane'
+baseline_end='^## Step 2: Read the ticket and claim it'
+# Empty is the default, and a repo that declared no baseline must see none of this — the same
+# opt-in shape adrDir has. Without the gate, every existing repo grows a step it never chose.
+assert_guards "$work" "$baseline_start" "$baseline_end" \
+  "csw-config get baseline" "work: Step 1.5 is gated on baseline, so repos without one never see it"
+# Red here means somebody else broke the machine. Absorbing it into the diff is how it gets
+# rediscovered at Step 6 with a day's work stacked on top.
+assert_guards "$work" "$baseline_start" "$baseline_end" \
+  "not yours to fix" "work: a red baseline is reported, not absorbed"
+# Without this, the next reader treats a green baseline as partial gate coverage — a claim it
+# never made. The subject is the environment; the gate's subject is the change.
+assert_guards "$work" "$baseline_start" "$baseline_end" \
+  "not a pre-run of the gate" "work: a green baseline is not evidence about the work"
+# Step 9's draft path carries work that exists. At Step 1.5 nothing has been built, so a draft
+# PR would be an empty branch asking for review.
+assert_guards "$work" "$baseline_start" "$baseline_end" \
+  "nothing has been built yet" "work: a failing baseline stops and asks instead of drafting a PR"
+# Ordering is the whole design: a fresh worktree has no installed dependencies, so a baseline
+# run inside one fails for reasons that say nothing about the environment. Placing it before
+# Step 2 also means a failing baseline leaves no half-claimed ticket behind.
+baseline_line=$(grep -n "$baseline_start" "$work" | head -1 | cut -d: -f1)
+work_step2_line=$(grep -n "$baseline_end" "$work" | head -1 | cut -d: -f1)
+if [ -n "$baseline_line" ] && [ -n "$work_step2_line" ] && [ "$baseline_line" -lt "$work_step2_line" ]; then
+  PASSES=$((PASSES + 1))
+else
+  FAILURES=$((FAILURES + 1))
+  printf 'FAIL work: Step 1.5 must come before Step 2, so a red baseline leaves the ticket unclaimed\n' >&2
+fi
+# A batch subagent has nobody to ask, and batch's own Step 6 answers "cannot proceed" with a
+# draft PR — the one thing Step 1.5 forbids, because at Step 1.5 there is no work to draft.
+# Without this, an unattended run opens an empty draft against a machine fault.
+assert_guards "$work" "$baseline_start" "$baseline_end" \
+  "nobody to ask" "work: Step 1.5 says what a batch subagent does with a red baseline"
+# Red flags are where an agent looks when it is about to rationalise its way past a step.
+assert_contains "$(sed -n '/^## Red flags/,$p' "$work")" "baseline" \
+  "work: red flags catch a red baseline being worked around"
+
 # --- work: reading what csw:prep left behind ---
 #
 # Prep writes its spec and its open questions to a ticket comment. If Step 2 does not go and
