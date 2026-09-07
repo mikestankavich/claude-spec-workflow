@@ -475,6 +475,20 @@ assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
 assert_contains "$merge_red_flags" "stacked" \
   "merge: red flags catch merging without looking for dependents"
 
+# --- merge: an ADR riding in the PR gets named before it lands ---
+#
+# #118: csw:work Step 8 writes ADRs unattended on the argument that review is the filter rather
+# than the prompt. Nothing at merge time ever looked, so "review is the filter" quietly meant
+# "someone was supposed to notice". This is the gate that makes the argument true.
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "csw-config get adrDir" "merge: gates the ADR check on the repo opting into ADRs"
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "gh pr diff" "merge: reads the PR's own file list to find an ADR"
+# The gate must be silent for the default. A repo that keeps no ADRs must see no new prompt,
+# exactly as in csw:work Step 8.
+assert_guards "$merge" '^### Before the merge: an ADR' '^### The merge' \
+  "none of the rest" "merge: an empty adrDir runs none of the ADR gate"
+
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"
 assert_guards "$cleanup" '^## Step 4: Sweep for everything else' \

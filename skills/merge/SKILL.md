@@ -198,6 +198,34 @@ The PR is closed, so its base cannot be changed; it cannot be reopened, because 
 gone. Recovering from there means recreating the pull request by hand and losing its review
 history — which is why this is a gate rather than a thing to notice afterwards.
 
+### Before the merge: an ADR riding in the PR
+
+```bash
+csw-config get adrDir
+```
+
+**Empty — the default — and none of the rest of this subsection runs.** A repo that keeps no
+architecture decision records sees no new prompt here, exactly as in `csw:work` Step 8.
+
+**Non-empty, and it names the directory this repo keeps its ADRs in.** Intersect it with what
+the PR actually touches:
+
+```bash
+gh pr diff <number> --name-only
+```
+
+If nothing under `<adrDir>` appears, say nothing and merge. If something does, **name it and
+confirm before merging** — the file, its title, and that merging it makes it the repo's
+standing decision.
+
+`csw:work` writes ADRs unattended, on the argument that review is the filter rather than the
+prompt. That argument only holds if something at merge time actually looks. Without this gate
+"review is the filter" means "someone was supposed to notice", and an ADR nobody read becomes a
+rule the next person gets held to.
+
+An ADR is its own commit precisely so that rejecting it here is one revert and the
+implementation stays. Say that when you ask, so declining is visibly cheap.
+
 ### The merge
 
 ```bash
@@ -263,3 +291,4 @@ that the worktree and branch are still there.
 | "`--admin` would clear this, I'll just add it" | It overrides a protection someone chose. Diagnose, report, ask. |
 | "Deleting the branch will just retarget anything stacked on it" | It closes it. Check for dependents and retarget them first. |
 | "If a stacked PR closes, I'll reopen it after" | You can't. Closed PRs won't change base, and won't reopen without one. |
+| "The ADR was in the diff they approved" | It was written unattended. Name it, so approving it is a thing someone did. |
