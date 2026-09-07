@@ -48,6 +48,52 @@ csw-config get baseBranch
 
 Capture all three now. Step 2 changes directory and Step 3 needs these values.
 
+## Step 1a: Stop what is running from this worktree
+
+```bash
+csw-services stop "<path from Step 1>"
+```
+
+**This never asks**, for exactly the reason branch cleanup never asks. Removing the worktree is
+bookkeeping, and so is stopping the things that lived in it. Every argument for deleting the
+worktree unprompted applies unchanged to the processes inside it — and asking is how it gets
+forgotten, while a forgotten one goes on answering `:5432` for the next ten hours.
+
+**Cleanup is what manufactures these orphans.** It does not merely fail to tidy up: removing the
+worktree is the moment those processes stop having a valid home and become indistinguishable
+from the live session's. The cost is not the wasted process — it is a test run going green
+against a backend, frontend or **database** belonging to a different branch, with every
+precondition check passing. And a healthy orphan does not get ignored, it gets **adopted**: the
+next stack finds it present, healthy and on the expected port, attaches rather than starting its
+own, and then correctly disclaims something it did not start. Every subsequent session reaches
+the same conclusion, which is what makes an orphan permanent.
+
+**It runs before the worktree is removed, and that ordering is load-bearing three times over.**
+A graceful teardown often has to run from inside the directory; once the directory is gone the
+compose file goes with it; and a container that bind-mounts the worktree can leave root-owned
+files behind that a later non-root removal cannot delete. Step 2 is where `ExitWorktree` removes
+the directory, so this is the last moment any of that is still possible.
+
+`csw-services` names every process group and compose project **before** it signals anything, so
+an unprompted destructive step is still reviewable. **Pass that on, including the empty case** —
+`nothing running from <path>` is an answer, and silence is indistinguishable from not having
+checked. If it names something that looks like a test harness mid-run, say so in the report:
+losing one costs a measurement, and the human should learn that from you rather than from a
+result that never arrives.
+
+Its scope is one path. It stops what came from *this* worktree and nothing else.
+**It is not a zombie reaper**, and there is no machine-wide mode to reach for. That boundary makes
+acting without asking safe: what it might touch is answerable in one sentence. A supervised
+`systemctl --user` unit, a buildkit container, an editor's MCP server and a database started
+from the main checkout are all out of scope for the same reason rather than four different ones.
+
+If `csw-services` itself fails — not "found nothing", but exited non-zero — report that and
+carry on with the cleanup. Removal is still correct; what is unknown is whether anything
+survived it, and saying so beats either stalling or implying a clean teardown.
+
+Orphans whose worktree is *already* gone are not reachable from here, because no run owns them.
+Step 4's sweep reports those.
+
 ## Step 2: Leave the worktree
 
 Use the native **ExitWorktree** tool if one exists — it owns removal for worktrees it
@@ -309,6 +355,11 @@ is clean, even when it is obvious. Propose it, name what you would set it to, an
 | "The worktree is right here, so it must be safe to remove" | Confirm the merge first. A worktree existing says nothing about whether its branch shipped. |
 | "`gh pr view` failed, but I can check `git log` instead" | No substitute counts. Command failure is a stop, the same as an explicit non-merged state. |
 | "I'll ask before deleting the worktree" | Once the merge is confirmed, do not. Removing its worktree from there is bookkeeping. Asking again is how it gets forgotten. |
+| "The worktree is going away, so whatever was in it goes with it" | It does not. The directory goes; the dev server, the watcher and the database container are **still running**, and the next stack adopts them on the expected port. |
+| "I'll ask before stopping the dev server" | Do not. It is the same bookkeeping as deleting the branch, and asking is how it gets forgotten. |
+| "I'll tear the services down after the worktree is removed" | Too late. The compose file went with the directory, and a graceful stop often has to run from inside it. |
+| "Nothing was running, so there's nothing to report" | Report the empty case. Silence reads as "not checked". |
+| "That container looks stale too, I'll take it down while I'm here" | Not yours. Cleanup is responsible for the mess it made — this worktree — and nothing else on the machine. |
 | "The ticket is clearly done, I'll close it" | Always ask. Every time. |
 | "Everything merged and the sweep is clean, so it's done" | Merged answers whether the work landed, never whether it is all there. Read the ledger first. |
 | "One item is short — I'll file it as a follow-up" | An item on the ledger never becomes a new ticket. The ticket is not done. |

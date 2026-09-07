@@ -539,6 +539,46 @@ assert_guards "$cleanup" '^## Step 5: The tracker, last' '^## Red flags' \
 cleanup_red_flags=$(sed -n '/^## Red flags/,$p' "$cleanup")
 assert_contains "$cleanup_red_flags" "ledger" \
   "cleanup: red flags catch closure proposed on a merge rather than on coverage"
+
+# --- cleanup: whatever is running from the worktree is stopped with it ---
+#
+# Removing a worktree does not stop what was running in it, so cleanup is what
+# *manufactures* orphans: the directory goes, and the dev server, the watcher
+# and the database container survive with nothing left to identify them by.
+# A healthy orphan does not get ignored — it gets adopted by the next stack
+# that finds it on the expected port, and the test run goes green against a
+# database belonging to a branch that shipped ten hours ago.
+assert_guards "$cleanup" '^## Step 1a: Stop what is running from this worktree' \
+  '^## Step 2: Leave the worktree' \
+  "csw-services stop" "cleanup: stops what is running from the worktree"
+assert_guards "$cleanup" '^## Step 1a: Stop what is running from this worktree' \
+  '^## Step 2: Leave the worktree' \
+  "never asks" "cleanup: the teardown is mandatory housekeeping, not an offer"
+assert_guards "$cleanup" '^## Step 1a: Stop what is running from this worktree' \
+  '^## Step 2: Leave the worktree' \
+  "empty case" "cleanup: reports the empty teardown too"
+# The scope boundary is what makes an unprompted destructive step safe: what it
+# might touch has to be answerable in one sentence, and it is — things that came
+# from this worktree.
+assert_guards "$cleanup" '^## Step 1a: Stop what is running from this worktree' \
+  '^## Step 2: Leave the worktree' \
+  "not a zombie reaper" "cleanup: the teardown is scoped to this worktree, not the machine"
+# Ordering is load-bearing three times over: a graceful teardown often has to run
+# from inside the directory, the compose file goes with the directory, and a
+# container that bind-mounts the worktree can leave root-owned files behind that
+# a later non-root removal cannot delete. ExitWorktree removes the directory in
+# Step 2, so a teardown written after it runs too late — assert the position in
+# the file, not merely the presence of the step.
+step1a_line=$(grep -n '^## Step 1a:' "$cleanup" | head -1 | cut -d: -f1)
+step2_line=$(grep -n '^## Step 2: Leave the worktree' "$cleanup" | head -1 | cut -d: -f1)
+if [ -n "$step1a_line" ] && [ -n "$step2_line" ] && [ "$step1a_line" -lt "$step2_line" ]; then
+  PASSES=$((PASSES + 1))
+else
+  FAILURES=$((FAILURES + 1))
+  printf 'FAIL cleanup: Step 1a must come before Step 2, which is where removal happens\n' >&2
+fi
+assert_contains "$cleanup_red_flags" "still running" \
+  "cleanup: red flags catch leaving a service up after its worktree is gone"
 # csw-sweep's `[gone]` arm reads `%(upstream:track)`, which only says `[gone]` once the
 # remote-tracking ref is missing locally — and a plain `git pull` does not prune, so a branch
 # deleted on the forge stays invisible to it. The sweep cannot fix this itself (it must never
