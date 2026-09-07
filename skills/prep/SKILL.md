@@ -205,6 +205,10 @@ The body:
 ## First-pass spec
 <what the change is, in the codebase's own terms>
 
+## Acceptance
+1. <one item, one line, checkable without reading the description again>
+2. <the next>
+
 ## Decisions
 1. <the choice, stated as settled> — <the reasoning that made it a decision rather than a
    question: the precedent it follows, or why it is cheap to reverse>
@@ -224,6 +228,18 @@ ever read back.
 **Every decision carries its reasoning.** A decision written down without the precedent behind
 it is indistinguishable from a guess, and a reader who cannot see why it was made cannot
 overturn it — which is the one safety mechanism the triage in Step 4 relies on.
+
+**The acceptance list is the ticket's scope, enumerated.** Take it from the whole description —
+the ordering constraints and the "replace, do not delete" requirements that live in prose are
+exactly the items a structured read loses. Write **one line per item**, each **checkable
+without reading the description again**, because the readers are a dispatch that has never seen
+this ticket and a cleanup deciding whether to close it. Neither can re-derive the list from the
+description, and neither will try.
+
+**An acceptance item is not a ticket seed.** Enumerating six items does not propose six
+tickets; it proposes one ticket whose completion is legible. Nothing downstream may turn an
+item into a new ticket — an uncovered item is unfinished work on this ticket, and `csw:cleanup`
+Step 5 treats it that way.
 
 **An empty open-questions section says so.** Write `_None._` under the heading rather than
 dropping the heading, because "nothing left open" is a dispatchable signal and an absent

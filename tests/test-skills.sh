@@ -262,6 +262,19 @@ assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
   "the codebase contradicts" \
   "prep: the comment carries what the ticket asserts and the code denies"
 
+# A ticket's declared scope has to become an enumerated, checkable list before the work starts,
+# or nothing downstream can tell a ticket that shipped from a ticket that shipped most of
+# itself. Prep already reads the whole description, so enumerating it is nearly free — and the
+# readers are a dispatch that has never seen the ticket and a cleanup deciding whether to close
+# it, neither of which can re-derive the list from prose.
+assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
+  "## Acceptance" "prep: the comment carries an enumerated acceptance list"
+assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
+  "one line per item" "prep: the acceptance list is one line per item"
+assert_guards "$prep" '^## Step 6: Write one comment' '^## Step 7: Stop' \
+  "checkable without reading the description again" \
+  "prep: acceptance items stand on their own"
+
 # Zero side effects is the property that makes prep free to run before anything is decided,
 # and it is enumerated rather than implied for the same reason batch's dry run enumerates it.
 assert_contains "$(cat "$prep")" \
