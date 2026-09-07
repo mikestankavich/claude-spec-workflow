@@ -434,6 +434,29 @@ merge_red_flags=$(sed -n '/^## Red flags/,$p' "$merge")
 assert_contains "$merge_red_flags" "decorative" \
   "merge: red flags catch a stated reference that was never read"
 
+# --- merge: BLOCKED is two states, and the skill can tell them apart ---
+#
+# #118: the table glossed BLOCKED as "typically a missing review" and Step 4 then offered one
+# command that fails. Merging #86 the block was a repository ruleset whose only bypass actor
+# was the admin running the merge — nothing about a review, and no waiting that would fix it.
+# All of this is scoped to Step 3, which is where mergeability is decided.
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "rules/branches" "merge: asks the API which rule is blocking rather than guessing"
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "bypass_actors" "merge: checks whether an admin bypass actually exists before offering --admin"
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "--auto" "merge: offers --auto for a requirement that is merely pending"
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "--admin" "merge: offers --admin for a requirement that will never be met"
+# --admin overrides a protection someone configured deliberately. The skill may name it; it
+# must never take it on its own authority.
+assert_contains "$(cat "$merge")" "never yours to take" \
+  "merge: --admin is the human's call, not the skill's"
+# The diagnosis must not be a speculative `gh pr merge`: Step 4's stacked-PR and ADR gates have
+# not run yet, so a probe that can succeed would land the merge ahead of them.
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "read-only" "merge: diagnoses BLOCKED without attempting the merge"
+
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"
 assert_guards "$cleanup" '^## Step 4: Sweep for everything else' \

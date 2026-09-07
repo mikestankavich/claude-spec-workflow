@@ -107,9 +107,56 @@ Also check `mergeStateStatus`:
 |---|---|---|
 | `BEHIND` | The base branch moved since this PR was opened | Update the branch, let CI run again |
 | `DIRTY` | The PR has merge conflicts | Stop and report them |
-| `BLOCKED` | A protection requirement is unmet — typically a missing review | Stop and report what is required. Do not attempt the merge. |
+| `BLOCKED` | A protection requirement is either pending or unmeetable — the status does not say which | Diagnose it, below. Do not merge, and do not ask a question the API can answer. |
 | `UNSTABLE` | A non-required check is failing | Report which check, and ask before merging |
 | `HAS_HOOKS`, `UNKNOWN`, or anything unrecognised | Does not map to a known case | Do not guess. Report the state and ask. |
+
+### `BLOCKED` is two states, and the API tells you which
+
+`BLOCKED` covers both *a requirement that will be satisfied later* and *a requirement that will
+never be satisfied at all*, and the status alone cannot distinguish them. Guessing "typically a
+missing review" is how this step used to send someone to a Step 4 that had exactly one command,
+which then failed.
+
+Ask what is actually protecting the base branch. Both probes are **read-only** — a speculative
+`gh pr merge` is not the diagnosis, because Step 4's gates have not run yet and a probe that
+succeeds would land the merge ahead of them:
+
+```bash
+gh api repos/:owner/:repo/rules/branches/<baseRefName>
+```
+
+That lists every rule applying to the base, each with the `ruleset_id` it came from. For a rule
+that names a ruleset, ask who is allowed past it:
+
+```bash
+gh api repos/:owner/:repo/rulesets/<ruleset_id> --jq '{name,enforcement,bypass_actors}'
+```
+
+The answer sorts the block into one of two shapes, and they are not interchangeable:
+
+- **`--auto` — the requirement is pending.** A review requested but not yet given, a required
+  check still queued. Nothing is overridden: GitHub holds the merge and lands it once the
+  requirement is met. Offer this when the block is something that arrives on its own, and say
+  plainly that the merge will then happen later and unattended, with nobody looking again.
+- **`--admin` — the requirement is unmet and no waiting will change that.** Observed merging
+  #86: CI green, `required_approving_review_count` 0, no unresolved threads, branch 0 behind.
+  The block was a repository ruleset whose only bypass actor was the admin running the merge.
+  There was nothing to wait for; the merge either used the bypass or did not happen.
+  `bypass_actors` is what tells you this shape apart from the first — if it does not list an
+  actor the invoker is, `--admin` will not work either, and the honest report is that this PR
+  cannot be merged by this account.
+
+**`--admin` overrides a protection someone configured deliberately.**
+**It is never yours to take.**
+Report what is blocking, say which of the two shapes it is and on what evidence, and ask. What this diagnosis buys is a question that can actually be answered — "the
+`non_fast_forward` rule blocks this and you are its bypass actor, merge with `--admin`?" rather
+than "it says `BLOCKED`, what do you want to do?"
+
+Once the human authorises one, it goes on Step 4's command. `gh` rejects `--auto` and `--admin`
+together — they are answers to different questions — and `--admin` is the flag for *not meeting*
+the requirements, so it is only ever reached with the rest of Step 3 already green. It silences
+the block, not the reason for it.
 
 ## Step 4: Merge
 
@@ -172,3 +219,5 @@ that the worktree and branch are still there.
 | "No checks means nothing to block on" | Absence of checks isn't a green light. Ask before merging. |
 | "They named a PR, but `gh pr view` already found one" | Then the stated reference was decorative and the transcript lies. Resolve what they said. |
 | "The number they gave is the branch's PR anyway" | You know that only after resolving it. Resolve it, then say which reading you used. |
+| "`BLOCKED` means someone needs to review it" | Sometimes. Ask the rules API which rule it is before reporting a cause. |
+| "`--admin` would clear this, I'll just add it" | It overrides a protection someone chose. Diagnose, report, ask. |
