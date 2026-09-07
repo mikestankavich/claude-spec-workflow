@@ -230,24 +230,58 @@ def command_of(pid):
         return "?"
 
 
-def is_supervised(pid):
-    """True when a supervisor owns this process, so it is never ours to stop.
-
-    Reads the supervisor's own bookkeeping rather than shelling out to
-    systemctl once per pid: /proc/<pid>/cgroup's leaf is a `.service` for a unit
-    systemd owns and restarts, and a `.scope` for a process a session merely
-    launched. The two cannot disagree with what systemd actually thinks, because
-    it is what systemd wrote.
-    """
+def _cgroup_path(pid_or_self):
+    """The cgroup path systemd put this process in, or None."""
     try:
-        with open(os.path.join(PROC, str(pid), "cgroup"), "r") as handle:
+        with open(os.path.join(PROC, str(pid_or_self), "cgroup"), "r") as handle:
             lines = [line.strip() for line in handle if line.strip()]
     except OSError:
-        return False
+        return None
     if not lines:
+        return None
+    # cgroup v2 writes a single "0::<path>" line; v1 writes several. The last
+    # line is the unified/most specific one in both.
+    path = lines[-1]
+    return path.split(":", 2)[-1] if ":" in path else path
+
+
+def is_supervised(pid, caller_cgroup):
+    """True when a supervisor owns this process, so it is never ours to stop.
+
+    Reads the supervisor's own bookkeeping rather than shelling out to systemctl
+    once per pid: /proc/<pid>/cgroup's leaf is a `.service` for a unit systemd
+    owns and restarts, and a `.scope` for a process a session merely launched.
+    That cannot disagree with what systemd thinks, because it is what systemd
+    wrote.
+
+    But a `.service` cgroup only means "supervised" when it is *somebody else's*.
+    Processes spawned inside a unit's cgroup **inherit** it, and an inherited
+    cgroup is not a unit -- killing such a process is not undone by systemd,
+    because it was never the unit's main pid. So when the caller is itself
+    running under a service, everything it started shares that cgroup, and a
+    leaf-only test excludes the whole machine.
+
+    That is not hypothetical. GitHub's Actions runner runs as a systemd service,
+    and CI reported "nothing running" for processes it had just started, while
+    the same suite passed locally where the session cgroup is a `.scope`. Any
+    setup whose shell, editor or agent runs under a systemd user unit hits it --
+    and a silent empty result reading as "nothing running" is the one answer
+    this tool must never give by accident.
+
+    So: a `.service` leaf, *and* a cgroup that is not the caller's own or nested
+    inside it.
+    """
+    path = _cgroup_path(pid)
+    if path is None:
         return False
-    leaf = lines[-1].split("/")[-1]
-    return leaf.endswith(".service")
+    if not path.split("/")[-1].endswith(".service"):
+        return False
+    if caller_cgroup is not None and (
+        path == caller_cgroup or path.startswith(caller_cgroup.rstrip("/") + "/")
+    ):
+        # Our own container, not evidence that this process is a supervised unit.
+        return False
+    return True
 
 
 def protected_pids():
@@ -376,6 +410,7 @@ def find_processes(worktree):
         return []
     protected = protected_pids()
     ports = listening_ports()
+    caller_cgroup = _cgroup_path("self")
     found = []
     for pid in _numeric_pids():
         if pid in protected:
@@ -385,7 +420,7 @@ def find_processes(worktree):
             continue
         if cwd is None:
             cwd = ""
-        if is_supervised(pid):
+        if is_supervised(pid, caller_cgroup):
             continue
         fields = proc_stat_fields(pid)
         if not fields or len(fields) < 20:
@@ -426,6 +461,7 @@ def find_fd_holders(worktree, already_found):
     if not host_supported():
         return []
     protected = protected_pids()
+    caller_cgroup = _cgroup_path("self")
     holders = []
     for pid in _numeric_pids():
         if pid in protected or pid in already_found:
@@ -449,7 +485,7 @@ def find_fd_holders(worktree, already_found):
                 break
         if not paths:
             continue
-        if is_supervised(pid):
+        if is_supervised(pid, caller_cgroup):
             continue
         holders.append(
             {"pid": pid, "command": command_of(pid), "holding": paths}

@@ -336,6 +336,40 @@ fake_pids=$(CSW_SERVICES_PROC="$fakeproc" CSW_SERVICES_DOCKER=/nonexistent-docke
   "$SERVICES" json "$wt5" | jq -c '[.processes[].pid]')
 assert_eq "$fake_pids" "[4002]" "a supervised .service unit is excluded; a .scope is not"
 
+# ...but a `.service` cgroup is only evidence of supervision when it is somebody
+# else's. Processes spawned inside a unit's cgroup INHERIT it, and are not
+# themselves supervised units -- killing one is not undone by systemd. So when
+# the caller is itself running under a service, everything it spawned shares
+# that cgroup and a leaf-only test excludes the entire machine.
+#
+# That is not hypothetical: GitHub's Actions runner runs as a systemd service,
+# so CI saw "nothing running" for every process it had just started, while
+# passing locally where the session cgroup is a `.scope`. Any setup whose shell,
+# editor or agent runs under a systemd user unit hits the same thing -- and a
+# silent empty result reading as "nothing running" is the one answer this tool
+# must never give by accident.
+fakeproc2=$(mktemp -d); TMPDIRS+=("$fakeproc2")
+printf '99999.0 99999.0\n' >"$fakeproc2/uptime"
+mkdir -p "$fakeproc2/self"
+ours="runner.slice/actions.runner.service"
+printf '0::/user.slice/user-1000.slice/user@1000.service/%s\n' "$ours" >"$fakeproc2/self/cgroup"
+mkproc2() { # pid cgroup-leaf
+  local d="$fakeproc2/$1"
+  mkdir -p "$d/fd"
+  ln -sfn "$wt5" "$d/cwd"
+  printf '%s (node (dev) run) S 1 %s 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 100 0 0 0\n' "$1" "$1" >"$d/stat"
+  printf 'Name:\tfakeproc\nPPid:\t1\n' >"$d/status"
+  printf 'fake\0proc\0' >"$d/cmdline"
+  printf '0::/user.slice/user-1000.slice/user@1000.service/%s\n' "$2" >"$d/cgroup"
+}
+mkproc2 5001 "$ours"                      # spawned by us, inside our own service cgroup
+mkproc2 5002 "app.slice/bridge.service"   # somebody else's supervised unit
+
+shared_pids=$(CSW_SERVICES_PROC="$fakeproc2" CSW_SERVICES_DOCKER=/nonexistent-docker \
+  "$SERVICES" json "$wt5" | jq -c '[.processes[].pid]')
+assert_eq "$shared_pids" "[5001]" \
+  "a process sharing the caller's own .service cgroup is ours, not a supervised unit"
+
 # The parenthesised comm is parsed correctly, so pgrp reads as a pgid rather
 # than as some later field entirely.
 fake_pgid=$(CSW_SERVICES_PROC="$fakeproc" CSW_SERVICES_DOCKER=/nonexistent-docker \
