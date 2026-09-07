@@ -64,6 +64,22 @@ approach has more than one defensible shape. Everything after planning is unchan
 validation, same gates, same PR, same hard stop. A word that is neither this nor nothing gets
 named back and asked about rather than quietly dropped.
 
+```
+/csw:work ENG-1088 this ticket is an epic, review for completion and tag for deploy
+```
+
+A sentence is not a mistyped keyword. **One word after the ticket is read as a typo** and gets
+named back and asked about — the word you reached for was probably `interactive`. **Two or more
+is an editorial rider**, and it is accepted: added to the brief, and echoed back in the announce
+line so it is never a change nobody saw. Splitting on word count keeps that mechanical rather
+than a judgement about whether something sounds like direction.
+
+A rider is **context, never authority**. It cannot authorise the merge the hard stop already
+refuses, cannot waive a gate, and cannot stand in for reading the ticket; where it contradicts
+the ticket or a recorded prep decision it is named back and asked about rather than quietly
+preferred. The same grammar runs at merge time — `go for merge — reviewed the ADR, all good` —
+where a rider is **review testimony**, and can satisfy the ADR acknowledgment and nothing else.
+
 **Merge** is natural language, not a command — `go for merge`, `diffs look good`, `merge it`
 — because it is said mid-conversation where a slash command is friction. An ambiguous "looks
 good" earns a clarifying question rather than a merge. CI red stops it.
@@ -168,8 +184,10 @@ A different project is a config file, not a fork. Full reference:
 | `/csw:prep <ticket>` | Before dispatch | Optional — interactive, spec only, no side effects |
 | `/csw:work <ticket>` | Dispatch | Command, or "work ENG-1088" |
 | `/csw:work <ticket> interactive` | Dispatch | Brainstorms first, then the same run |
+| `/csw:work <ticket> <a sentence>` | Dispatch | Two or more trailing words are an editorial rider |
 | `/csw:merge` | Merge | Usually natural language: "go for merge" |
 | `/csw:merge <ref>` | Merge | Names the PR (`#92`) or its ticket (`ENG-92`) instead of the current branch |
+| `go for merge — reviewed the ADR, all good` | Merge | A rider is review testimony; it settles the ADR acknowledgment |
 | `/csw:cleanup` | Cleanup | Usually automatic, chained from merge |
 | `/csw:batch` | Nightly loop | Command only — never inferred |
 | `/csw:batch --dry-run` | Nightly loop | Selection only, no side effects |

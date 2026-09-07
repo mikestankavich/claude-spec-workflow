@@ -305,6 +305,46 @@ assert_contains "$work_red_flags" "modifier" \
 assert_contains "$work_red_flags" "interactive" \
   "work: red flags deny that interactive relaxes the hard stop"
 
+# --- work: an editorial rider, and everything a rider is not ---
+#
+# #109: `/csw:work 92 this ticket is an epic, review for completion and tag for deploy` was met
+# by the unrecognised-modifier rule and offered back as something to discard. That rule is right
+# for a typo — someone reached for `interactive` and missed — and wrong for a sentence. The
+# split is on word count precisely so it is mechanical rather than a judgement about whether
+# something "sounds like" direction.
+assert_contains "$(fm_field "$work" 'argument-hint')" "rider" \
+  "work: an editorial rider is discoverable from the argument hint"
+assert_guards "$work" '^### The modifier, and then the rider' '^### A rider is context, never authority' \
+  "Two or more words" "work: two or more words is a rider, not a mistyped keyword"
+assert_guards "$work" '^### The modifier, and then the rider' '^### A rider is context, never authority' \
+  "One word" "work: one word is still read as a suspected typo"
+# The single-word ask is the behaviour this ticket must not trade away, so assert it inside the
+# region that now decides the reading rather than anywhere in the file: move the grammar in and
+# drop the ask, and this goes red.
+assert_guards "$work" '^### The modifier, and then the rider' '^### A rider is context, never authority' \
+  "An unrecognised modifier is not ignored" \
+  "work: the single-word unrecognised-modifier ask survives the rider grammar"
+# A rider that quietly changes what a dispatch does is the failure this must not introduce.
+# Being visible at the top of the run is the price of accepting it at all.
+assert_guards "$work" '^### The modifier, and then the rider' '^### A rider is context, never authority' \
+  "echoed in the announce line" "work: a rider is echoed in the announce line"
+
+# A rider adds to the brief. It does not grant permission — and every one of these is a
+# permission somebody will eventually try to read into one.
+assert_guards "$work" '^### A rider is context, never authority' '^## Step 1.5' \
+  "It cannot authorise a merge" "work: a rider cannot authorise the merge Step 8 refuses"
+assert_guards "$work" '^### A rider is context, never authority' '^## Step 1.5' \
+  "It cannot waive validation" "work: a rider cannot waive Step 6's gates"
+assert_guards "$work" '^### A rider is context, never authority' '^## Step 1.5' \
+  "It cannot substitute for the ticket" "work: a rider never replaces reading the ticket"
+# Prep's decisions carry their reasoning precisely so they can be overturned deliberately.
+# Silently preferring the rider and silently dropping it are the same failure twice.
+assert_guards "$work" '^### A rider is context, never authority' '^## Step 1.5' \
+  "named back and asked about" \
+  "work: a rider contradicting the ticket or a prep decision is named back, not preferred"
+assert_contains "$work_red_flags" "rider" \
+  "work: red flags catch a rider being read as permission"
+
 # --- work: the ADR pass, at the top of Step 8 ---
 #
 # Nothing in CSW used to ask whether a run produced a decision that outlives its ticket, so
@@ -601,6 +641,56 @@ assert_guards "$merge" '^## Step 5: Chain into cleanup' '^## Red flags' \
   "current branch" "merge: cleanup only chains when the merged PR is this worktree's"
 assert_contains "$merge_red_flags" "someone else's PR" \
   "merge: red flags catch cleaning up a worktree the merge did not belong to"
+
+# --- merge: an editorial rider is review testimony, and only that ---
+#
+# #109: `go for merge — reviewed the ADR, all good` is a person saying, at the moment of
+# merging, that they read the thing Step 4's ADR gate is about to ask them about. The merge
+# phase had nowhere to put it. One grammar with csw:work: known tokens first, then the
+# remainder read by word count.
+assert_contains "$(fm_field "$merge" 'argument-hint')" "rider" \
+  "merge: an editorial rider is discoverable from the argument hint"
+assert_guards "$merge" '^### Then read what is left over: the rider' \
+  '^#### A rider is context, never authority' \
+  "Two or more words" "merge: two or more words is a rider, not a mistyped keyword"
+assert_guards "$merge" '^### Then read what is left over: the rider' \
+  '^#### A rider is context, never authority' \
+  "One word" "merge: one word is a suspected typo, named back and asked about"
+assert_guards "$merge" '^### Then read what is left over: the rider' \
+  '^#### A rider is context, never authority' \
+  "echoed in the announce line" "merge: a rider is echoed in the announce line"
+
+# A merge is one-way, so the limits matter more here than anywhere. Step 3 is the gate a rider
+# will most often be pointed at, and it is exactly the one a rider cannot move.
+assert_guards "$merge" '^#### A rider is context, never authority' \
+  '^#### What a rider can do: review testimony' \
+  "It cannot green-light red CI" "merge: a rider cannot green-light red CI"
+assert_guards "$merge" '^#### A rider is context, never authority' \
+  '^#### What a rider can do: review testimony' \
+  "Step 3 is untouched" "merge: the rider grammar leaves Step 3's CI gate exactly as it was"
+assert_guards "$merge" '^#### A rider is context, never authority' \
+  '^#### What a rider can do: review testimony' \
+  "It cannot substitute for the" "merge: a rider never replaces reading the ticket or the diff"
+assert_guards "$merge" '^#### A rider is context, never authority' \
+  '^#### What a rider can do: review testimony' \
+  "named back and asked about" \
+  "merge: a rider contradicting the ticket or a prep decision is named back, not preferred"
+
+# The one thing a rider *can* do, stated as narrowly as it is meant: testimony from somebody
+# who has just read the diff is precisely what the ADR acknowledgment is asking for, and it
+# buys nothing else in this skill.
+assert_guards "$merge" '^#### What a rider can do: review testimony' \
+  '^## Step 2: Check that they actually' \
+  "review testimony" "merge: a rider is review testimony"
+assert_guards "$merge" '^#### What a rider can do: review testimony' \
+  '^## Step 2: Check that they actually' \
+  "its only authority" "merge: the ADR acknowledgment is the rider's only authority"
+# And the shortcut has to be readable from the gate itself, not only from Step 1 — the gate is
+# where somebody stands when they are deciding whether a human looked.
+assert_guards "$merge" '^### Before the merge: an ADR' '^### The merge' \
+  "rider" "merge: the ADR acknowledgment names the rider that can satisfy it"
+assert_contains "$merge_red_flags" "rider" \
+  "merge: red flags catch a rider being read as permission"
 
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"

@@ -1,13 +1,14 @@
 ---
 name: merge
-description: Merge the reviewed pull request for the current branch, then hand straight off to cleanup. Use when a human green-lights an open PR.
-when_to_use: "go for merge", "diffs look good", "merge it", "ship it", "land it", "approved, merge"
-argument-hint: "[pr-or-ticket-ref]"
+description: Merge the reviewed pull request for the current branch, then hand straight off to cleanup. A sentence of editorial direction alongside the green light is read as a rider. Use when a human green-lights an open PR.
+when_to_use: "go for merge", "diffs look good", "merge it", "ship it", "land it", "approved, merge", "go for merge — reviewed the ADR, all good"
+argument-hint: "[pr-or-ticket-ref] [editorial rider]"
 ---
 
 # Merge a reviewed pull request
 
-**Announce at start:** "Using csw:merge to land PR #<n>."
+**Announce at start:** "Using csw:merge to land PR #<n>." Where the invocation carried an
+editorial rider — Step 1 — echo it verbatim on that same line: `— rider: "<what they wrote>"`.
 
 ## Step 1: Resolve the PR
 
@@ -73,6 +74,54 @@ what lets someone stop the run while stopping is still free.
   is exactly the situation in which quietly preferring one would do the most damage.
 - **The PR is a draft.** Draft means the work told you it was not a merge candidate. Ask
   whether to mark it ready first.
+
+### Then read what is left over: the rider
+
+**Consume the known tokens first** — the reference Step 1 just resolved, and the phrasing Step 2
+checks for. Then read whatever is left, by word count. `csw:work` parses its own invocation the
+same way; one grammar, both skills:
+
+| Remainder | Reading |
+|---|---|
+| Nothing | No rider. |
+| **One word** | Suspected typo. Say what was passed, say it is not recognised, and ask. |
+| **Two or more words** | An **editorial rider**. Accept it. |
+
+`go for merge — reviewed the ADR, all good` is the shape this exists for: `go for merge` is the
+green light Step 2 is looking for, and `reviewed the ADR, all good` is the rider. Splitting on
+word count keeps the reading mechanical, and therefore testable — it is not a judgement about
+whether something *sounds like* direction.
+
+**A rider is echoed in the announce line, always:**
+
+> Using csw:merge to land PR #92 — rider: "reviewed the ADR, all good"
+
+A rider that quietly changes what a merge does is the failure this must not introduce, and a
+merge is one-way. Visible at the top of the run is the price of accepting it at all.
+
+#### A rider is context, never authority
+
+- **It cannot green-light red CI**, skip a gate, or waive validation. **Step 3 is untouched:**
+  "CI is flaky, ignore the failing check" is named and refused, exactly as it would be without
+  a rider. Red is still red.
+- **It cannot substitute for the diff, or for the ticket behind it.** A rider is a note in the
+  margin of what was reviewed, not a replacement for it, and it never stands in for reading the
+  ticket.
+- **It is not the green light.** Step 2 is unchanged: an ambiguous approval still earns its one
+  clarifying question, and a rider riding along with a maybe does not turn it into a yes.
+- **A rider that contradicts the ticket, or a decision recorded in a `**CSW prep**` comment, is
+  named back and asked about** — not silently preferred, and not silently dropped. Prep's
+  decisions carry their reasoning precisely so they can be overturned deliberately.
+
+#### What a rider can do: review testimony
+
+A rider is **review testimony**, and that is a real role rather than a consolation prize. It is
+the kind of thing a person says at the moment of merging, having just read the diff — and the
+ADR acknowledgment in Step 4 is the one gate in this skill whose entire question is *did a human
+look at this?*
+
+So a rider that says the ADR was read satisfies that acknowledgment.
+**That is its only authority.** Nothing else in this skill takes a rider on trust.
 
 ## Step 2: Check that they actually said merge
 
@@ -232,6 +281,13 @@ rule the next person gets held to.
 An ADR is its own commit precisely so that rejecting it here is one revert and the
 implementation stays. Say that when you ask, so declining is visibly cheap.
 
+**An editorial rider can satisfy the acknowledgment.** Where the invocation carried one
+saying the ADR was read — `go for merge — reviewed the ADR, all good` — the question this
+gate asks has already been answered by the person it would have been asked of. Name the file
+and say the rider satisfied it, then merge; do not ask again. Testimony from somebody who has
+just read the diff is exactly what this gate wants, and it is the only thing in this skill a
+rider is allowed to settle.
+
 ### The merge
 
 ```bash
@@ -304,4 +360,8 @@ that the worktree and branch are still there.
 | "Deleting the branch will just retarget anything stacked on it" | It closes it. Check for dependents and retarget them first. |
 | "If a stacked PR closes, I'll reopen it after" | You can't. Closed PRs won't change base, and won't reopen without one. |
 | "The ADR was in the diff they approved" | It was written unattended. Name it, so approving it is a thing someone did. |
+| "They typed a whole sentence, so I'll ask whether to discard it" | One word is a typo. Two or more is an editorial rider — accept it, and echo it in the announce line. |
+| "The rider says the failing check is flaky" | A rider is context, never authority. Step 3 is untouched: red is red. |
+| "The rider contradicts the ticket, so it supersedes it" | Neither silently wins. Name it back and ask. |
+| "They gave a rider, so they have approved everything in here" | It settles the ADR acknowledgment and nothing else. That is its only authority. |
 | "Merged, so chain into cleanup as always" | Not if it was someone else's PR. Cleanup removes *this* worktree. |
