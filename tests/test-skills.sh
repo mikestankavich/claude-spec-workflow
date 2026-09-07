@@ -660,6 +660,29 @@ assert_contains "$batch_summary" "ADRs proposed" \
 assert_contains "$batch_red_flags" "ADR" \
   "batch: red flags catch an ADR left buried in a summary line"
 
+# --- batch: route the ticket that is going to need a conversation ---
+#
+# csw:prep already ends by declaring a ticket dispatchable or not, and nothing consumed that
+# verdict. An unattended dispatch handed a decision to make will make one, and nobody agreed
+# to it — so a decide-shaped ticket with no answer on it is a candidate to flag, not to run.
+assert_guards "$batch" '^## Step 2: Select' '^## Step 3: If this is a dry run' \
+  "decide-shaped" "batch: a decide-shaped ticket is not dispatched unattended"
+assert_guards "$batch" '^## Step 2: Select' '^## Step 3: If this is a dry run' \
+  "computed and thrown away" "batch: says why the routing exclusion exists at all"
+
+# --- batch: coverage and absorbed work have to reach the morning ---
+#
+# Same argument as `adr`: Step 7 states the rows plus Step 2's groups are the whole input, so
+# anything not in the contract cannot reach the summary. A dispatch that folded three adjacent
+# fixes in has a larger diff than its ticket implies, and a morning that cannot see that
+# reviews it as though it were the ticket.
+assert_guards "$batch" '^### The report contract' '^## Step 6: When a ticket blocks or fails' \
+  '`coverage`' "batch: the report contract carries coverage against the ledger"
+assert_guards "$batch" '^### The report contract' '^## Step 6: When a ticket blocks or fails' \
+  '`absorbed`' "batch: the report contract carries what the dispatch folded in"
+assert_contains "$batch_summary" "Absorbed work" \
+  "batch: the morning summary surfaces absorbed work in a section of its own"
+
 # --- prep: recommends by default, asks only what a recommendation cannot settle ---
 # Measured over four tickets: prep asked 4-6 questions on each, and every question carrying a
 # recommendation was answered by taking the recommendation. Those questions carried no
