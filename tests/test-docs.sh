@@ -83,4 +83,26 @@ assert_eq "$extraction_headers" "2" "Task 14's 1.0.0 extraction contains only th
 spec_leak=$(grep -l "Claude Spec Workflow" "$REPO_ROOT"/*.md 2>/dev/null | grep -vFx "$changelog" || true)
 assert_eq "$spec_leak" "" "no repo-root markdown file except CHANGELOG.md says Claude Spec Workflow"
 
+# --- the service teardown, and the gap the fixtures cannot close ---
+assert_contains "$(cat "$readme")" "csw-services" "README documents the service teardown"
+assert_contains "$(cat "$readme")" "still running" \
+  "README says what removing a worktree used to leave behind"
+assert_contains "$(cat "$config_doc")" "csw-services" \
+  "configuration.md documents csw-services' errors"
+# This repo runs no services, so csw-services cannot be dogfooded here and the
+# fixtures are the whole of the automated coverage. Stated where the next
+# contributor meets it, rather than discovered at validation time.
+assert_contains "$(cat "$REPO_ROOT/CONTRIBUTING.md")" "csw-services" \
+  "CONTRIBUTING records that csw-services cannot be dogfooded here"
+
+# Every bin ships in the plugin, so a new one must be listed wherever the others are.
+for doc in "$readme" "$config_doc"; do
+  if grep -q "csw-sweep" "$doc" && ! grep -q "csw-services" "$doc"; then
+    FAILURES=$((FAILURES + 1))
+    printf 'FAIL %s lists csw-sweep but not csw-services\n' "$doc" >&2
+  else
+    PASSES=$((PASSES + 1))
+  fi
+done
+
 report

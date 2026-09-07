@@ -55,6 +55,20 @@ and feedback.
    Every bash tool under `bin/` has a matching `tests/test-<name>.sh`. `tests/run-tests.sh`
    runs every `tests/test-*.sh` file and fails the suite if any of them fail.
 
+   **`csw-services` is the one tool this repo cannot dogfood.** CSW runs no services of its
+   own — no dev server, no watcher, no database — so there is nothing here for a teardown to
+   find. `tests/test-csw-services.sh` covers the logic against fixtures instead: real
+   processes `cd`'d into temporary directories, a fake `docker` on `CSW_SERVICES_DOCKER`, and
+   a fake `/proc` tree on `CSW_SERVICES_PROC` for the supervised-unit exclusion, which cannot
+   be created in a test at all. Those seams exist for the tests and are not part of the
+   tool's interface.
+
+   Know what that does and does not buy. The fixtures prove the selection rules — what is
+   found, what is excluded, and that a process group goes down with its strayed descendant.
+   They cannot prove the tool behaves against a real `air`, a real vite or a real
+   `docker compose` stack. **The real validation is a session in a repo that has one**, and it
+   is worth doing before trusting a change here.
+
 ## Hacking on CSW Skills
 
 Skills are plain markdown under `skills/<name>/SKILL.md` (`work`, `merge`, `cleanup`,

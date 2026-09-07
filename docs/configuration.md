@@ -247,6 +247,19 @@ See [examples/csw.json](../examples/csw.json) for the complete version, and this
 `csw-gates` reuses exit `4` for a malformed `gates` value: not an array, an entry that is
 not an object, or an entry missing `when` or `run`.
 
+`csw-services` uses exit `2` for a missing worktree path, a non-numeric `--grace`, and any
+argument passed to `orphans` — which reports and never acts, so it takes none. Everything else
+it can report is exit `0`: **finding nothing is success**, the same rule `csw-sweep` follows,
+and so is a platform where the host-process arm cannot run. That case prints an explicit
+`not supported` note and still tears down compose projects, because a silent empty result would
+read as "nothing running" — the one answer it must never give by accident. A `docker` that is
+installed but not answering is reported as *unknown, not absent*, for the same reason.
+
+`worktreeDir` is what scopes `csw-services orphans`: a compose project whose
+`com.docker.compose.project.working_dir` names a path under it that no longer exists is provably
+a worktree CSW created and removed, so the sweep reports it. Nothing outside `worktreeDir` is
+ever claimed as ours.
+
 `csw-ticket` reuses exit `4` for a broken `ticketPrefix` or `branchPattern` — an invalid prefix,
 or a `branchPattern` that has no `<ticket>`/`<slug>` placeholder or renders to something that
 is not a legal git branch name. That is a config problem, the same class as the two rows above

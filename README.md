@@ -73,6 +73,21 @@ sweeps: it reports *other* merged-but-undeleted branches and stale worktrees wit
 asked. That turns "any remaining worktrees?" from a question you have to remember into
 something reported unprompted. Branch cleanup never asks. Closing a ticket always asks.
 
+Before the worktree goes, `csw-services` stops whatever was running from it. Removing a
+worktree does not stop its processes — the directory goes and the dev server, the file watcher
+and the database container are **still running**, with nothing left to identify them by. That is
+not an untidy machine, it is a test run going green against a database belonging to a branch
+that shipped ten hours ago, with every precondition check passing. A healthy orphan does not get
+ignored, either; it gets *adopted* by the next stack that finds it on the expected port.
+
+Origin is the criterion, and the machine already records it — the kernel keeps
+`/proc/<pid>/cwd`, the container runtime keeps `com.docker.compose.project.working_dir` — so
+nothing is written down and nothing can go stale. Scope is one worktree: a supervised
+`systemctl --user` unit, a shared build container and a database from the main checkout are all
+left alone, and there is no machine-wide mode. It stops what came from the worktree it is
+removing, the sweep *reports* orphans whose worktree is already gone, and it never reaps
+anything else. Like branch cleanup, it never asks — but it names everything before it signals it.
+
 ## The nightly loop
 
 ```
@@ -118,8 +133,11 @@ night would cut.
 /plugin install csw@claude-ship-workflow
 ```
 
-**Requires:** `git` 2.30+, `gh` 2.x authenticated, `jq` 1.6+. `/csw:batch` also needs
-`python3` 3.9+. [Superpowers](https://github.com/obra/superpowers) is a strong
+**Requires:** `git` 2.30+, `gh` 2.x authenticated, `jq` 1.6+. `/csw:batch` and `/csw:cleanup`
+also need `python3` 3.9+. The service teardown reads `/proc`, so its host-process arm is Linux
+only — elsewhere it says so and still tears down compose projects, rather than reporting an
+empty result that reads as "nothing running".
+[Superpowers](https://github.com/obra/superpowers) is a strong
 recommendation, not a hard dependency — `/csw:work` uses its planning, execution, and TDD
 skills when they are installed and proceeds test-first when they are not.
 
