@@ -457,6 +457,24 @@ assert_contains "$(cat "$merge")" "never yours to take" \
 assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
   "read-only" "merge: diagnoses BLOCKED without attempting the merge"
 
+# --- merge: --delete-branch must not close a PR stacked on this one ---
+#
+# #118: merging a PR that had another stacked on its head branch closed the dependent rather
+# than retargeting it — GitHub does not move a PR whose base is deleted. The dependent went to
+# CLOSED, still pointing at a branch that no longer existed, reporting a conflict it did not
+# have. Scoped to Step 4, which owns everything that happens around the merge command.
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "gh pr list --state open --base" "merge: looks for PRs stacked on this PR's head branch"
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "gh pr edit" "merge: retargets a stacked PR rather than letting the delete close it"
+# Recovery is the reason this is a pre-merge check and not a post-merge repair: both obvious
+# repairs refuse while the base branch is missing.
+assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
+  "Cannot change the base branch of a closed pull request" \
+  "merge: shows that the after-the-fact repair does not work"
+assert_contains "$merge_red_flags" "stacked" \
+  "merge: red flags catch merging without looking for dependents"
+
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"
 assert_guards "$cleanup" '^## Step 4: Sweep for everything else' \

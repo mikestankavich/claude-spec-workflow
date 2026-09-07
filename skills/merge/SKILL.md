@@ -160,6 +160,46 @@ the block, not the reason for it.
 
 ## Step 4: Merge
 
+### Before the merge: retarget anything stacked on this branch
+
+`--delete-branch` removes the head branch, and **GitHub does not retarget a pull request whose
+base branch disappears — it closes it.** Observed merging a PR that had another stacked on it:
+the dependent went to `state: CLOSED`, still pointing at a branch that no longer existed, and
+reported `CONFLICTING` for a conflict it did not have.
+
+Look for dependents first:
+
+```bash
+gh pr list --state open --base "<this PR's headRefName>" --json number,title,headRefName,baseRefName
+```
+
+Anything that comes back is stacked on the branch about to be deleted. Retarget each one onto
+this PR's own base **before** merging:
+
+```bash
+gh pr edit <dependent number> --base "<this PR's baseRefName>"
+```
+
+Then say which PRs were retargeted and onto what. A silently rebased stack is the same problem
+as a silently chosen PR: correct, and invisible to anyone who would have wanted to disagree.
+
+**This has to happen before the merge, because afterwards it does not work.** Both obvious
+repairs refuse while the base branch is missing:
+
+```
+$ gh pr edit 558 --base main
+GraphQL: Cannot change the base branch of a closed pull request.
+
+$ gh pr reopen 558
+API call failed: GraphQL: Could not open the pull request.
+```
+
+The PR is closed, so its base cannot be changed; it cannot be reopened, because its base is
+gone. Recovering from there means recreating the pull request by hand and losing its review
+history — which is why this is a gate rather than a thing to notice afterwards.
+
+### The merge
+
 ```bash
 gh pr merge <number> --merge --delete-branch
 ```
@@ -221,3 +261,5 @@ that the worktree and branch are still there.
 | "The number they gave is the branch's PR anyway" | You know that only after resolving it. Resolve it, then say which reading you used. |
 | "`BLOCKED` means someone needs to review it" | Sometimes. Ask the rules API which rule it is before reporting a cause. |
 | "`--admin` would clear this, I'll just add it" | It overrides a protection someone chose. Diagnose, report, ask. |
+| "Deleting the branch will just retarget anything stacked on it" | It closes it. Check for dependents and retarget them first. |
+| "If a stacked PR closes, I'll reopen it after" | You can't. Closed PRs won't change base, and won't reopen without one. |
