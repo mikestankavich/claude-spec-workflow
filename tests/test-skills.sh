@@ -101,6 +101,14 @@ fi
 # working as intended, and would only be the uniqueness rule under another name.
 # Present-inside-the-region is what makes a revert bite; that is the whole
 # contract.
+#
+# **A needle must not straddle a line wrap.** Both `assert_contains` and
+# `assert_guards` match against the file's text as written, so a phrase the skill
+# happens to break across two lines is not found — the assertion goes red against
+# prose that says exactly the right thing. The failure looks like a missing rule
+# and is actually a wrap, which is an expensive minute every time. Keep needles
+# short enough to survive reflowing, and where a long phrase is the thing worth
+# guarding, put it on its own line in the skill.
 
 # --- work: the hard stop and the tools it must reach for ---
 work="$SKILLS/work/SKILL.md"
