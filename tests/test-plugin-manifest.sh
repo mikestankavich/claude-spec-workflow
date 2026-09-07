@@ -28,7 +28,11 @@ assert_eq "$(jq -r .license "$PLUGIN")" "MIT" "plugin license is MIT"
 assert_eq "$(jq -r '.dependencies // "absent"' "$PLUGIN")" "absent" "no hard dependencies declared"
 
 version_file=$(tr -d '[:space:]' <"$REPO_ROOT/VERSION")
-assert_eq "$version_file" "1.1.0" "VERSION is 1.1.0"
+# Assert the shape, not the number. A literal here is a fourth copy of the
+# version that every release has to remember to edit, and the only one of the
+# four that can be wrong on its own -- the three below check each other.
+assert_eq "$(printf '%s' "$version_file" | grep -cE '^[0-9]+\.[0-9]+\.[0-9]+$')" "1" \
+  "VERSION is a bare semver version"
 assert_eq "$(jq -r .version "$PLUGIN")" "$version_file" "plugin.json version matches VERSION"
 
 assert_eq "$(jq -r '.plugins | length' "$MARKET")" "1" "marketplace lists exactly one plugin"

@@ -5,6 +5,204 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-09-07
+
+The stabilization release. 1.1.0 made an unattended loop possible; 1.2.0 is the work needed
+before what it hands back can be trusted without re-reading the transcript. A dispatch now
+establishes that the machine was sane before it started, is held to a scope it wrote down
+first, has somewhere to put a discovery other than the backlog, names the pull request before
+it merges it, retargets whatever was stacked on it, and takes the running environment down
+with the worktree.
+
+None of it is new surface area for the sake of it. Every item below is an observed failure —
+a wrong ticket dragged out of Done by a branch name, a ticket closed twice as "all six items
+shipped" with item 2 half-built, a stacked PR closed by `--delete-branch`, a merge that
+ignored the number it was handed, a database still answering on `:5432` ten hours after its
+branch shipped.
+
+### Added
+- **The acceptance ledger — a `**CSW scope**` comment the dispatch is held to.** A ticket's
+  scope lived as prose in a description that a one-shot session read once, so nothing could
+  ever answer *is it all there*. `csw:work` Step 6 answers *does it work*; Step 9's draft path
+  is all-or-nothing, and five of six items satisfies every rule for merge-ready. Observed on
+  TRA-1253: closed as Done at 09:22 with the claim "all six items shipped", item 2
+  half-implemented, closed again at 10:04. So the scope is now enumerated as a list before the
+  worktree opens — by `csw:prep` Step 6 where a prep comment exists, derived by `csw:work`
+  Step 2 where it does not — and every item is accounted for at the Step 6/7 checkpoint. An
+  item on the ledger never becomes a new ticket. (#116)
+- **A discoveries pass at Step 8 — fold, ticket, or drop.** A dispatch that found something
+  had exactly one affordance for it, and it was one MCP call away. Folding it into the work in
+  hand had no affordance at all, and *dropping it* was named nowhere as a legitimate outcome.
+  That asymmetry is the mechanism: ticketing is the cheapest action at the moment of discovery
+  and the most expensive over the life of the backlog. The disposition is now a forced
+  three-way choice, the default is to fold it into the branch that found it as its own commit,
+  filing a ticket instead takes naming one of four reasons, and drop is first-class in both
+  the step text and the red-flag table. The tracker is searched for every discovery, closed
+  and canceled included. Absorbing stops after three passes; an under-estimated fold is
+  abandoned rather than finished. The claim is cycle time, not backlog size — absorption is
+  nearly free while the worktree is alive and costs a full dispatch → review → merge → cleanup
+  round once it is gone. (#114)
+- **`baseline` config key — establish that the environment was already sane, at Step 1.5.**
+  `csw:work` ran the repo's gate exactly once, after the work was done, so a machine that was
+  already broken presented as a failure of the change, twenty minutes in, with a diff on top
+  of it. Observed in `trakrf/ble-mcp-test`: a generated file rewritten on every build armed
+  the repo's own staleness guard, and `just validate` failed with `STALE BRIDGE` at Step 6 of
+  a dispatch whose change was three lines of documentation. `baseline` is a cheap command run
+  in the main checkout before the ticket is claimed or a worktree opens. Absent — the default
+  — and the step does not run and nothing is reported; there is no inference, on the same rule
+  that already stops Step 0 guessing a `validate`. Green is one line and the dispatch
+  proceeds. Red stops and asks, naming the command and its output, and does not route to the
+  draft-PR path, because nothing has been built yet. It is deliberately not a pre-run of the
+  gate, and the step text says so, because a green baseline is not partial gate coverage.
+  (#113)
+- **Step 8 says what taking the ticket to a PR just unblocked.** A dispatch closes a ticket
+  that was blocking another one and nothing says so; the information dies in the tracker where
+  nobody is looking. Worked example: TRA-1200's last two software blockers went green at 13:37
+  and 15:13, the objective became runnable, and the day was experienced as *"I started with
+  the objective of running TRA-1200 and here I am seven tickets later."* The win was real and
+  invisible. Step 8 now names every ticket the finished one blocks with its remaining blocker
+  count, and calls out distinctly the one whose last blocker this dispatch cleared. Blocks
+  nothing → no output; `tracker: none` or no relation support → skipped silently, never
+  synthesised from prose. Report-only: the dispatch still modifies no ticket but its own.
+  (#115)
+- **Editorial riders on `csw:work` and `csw:merge`.** `/csw:work 92 this ticket is an epic,
+  review for completion and tag for deploy` used to stop and ask whether to discard the words.
+  That rule is right for a typo and wrong for a sentence: a clause of editorial direction is
+  not a mis-remembered keyword, and the correct response is to use it. One grammar, both
+  skills, split on word count so it stays mechanical — known modifiers are consumed first,
+  then **one** remaining word is a suspected typo and is named back and asked about, and **two
+  or more** is a rider, accepted, added to the brief and echoed in the announce line so it is
+  never a change nobody saw. A rider is context, never authority: it cannot authorise the
+  merge the hard stop refuses, cannot waive a gate, cannot stand in for reading the ticket,
+  and where it contradicts the ticket or a recorded prep decision it is named back rather than
+  quietly preferred. At merge time the same grammar carries review testimony — `go for merge —
+  reviewed the ADR, all good` satisfies the ADR acknowledgment below, and nothing else. (#109)
+- **`/csw:merge <ref>` — a ticket, or a PR.** `csw:merge` took no arguments at all. After a
+  batch there are three or four PRs and none of them is the current branch, so merging the
+  night's work meant checking out each worktree in turn to say "go for merge" from inside it.
+  Bare `/csw:merge` is unchanged. A prefixed reference (`ENG-92`) is a ticket and is resolved
+  to its PR; on `tracker: github` a bare number or `#92` is asked about as a *pull request*
+  first, since GitHub numbers issues and PRs out of one sequence and `gh issue view` on a PR
+  number succeeds and hands back the PR; on any other tracker a bare number is a PR number.
+  Which reading was used is always said out loud, because a merge is one-way. No PR for the
+  ticket → say so and stop. More than one → list them and ask, never pick.
+
+  **This is a correctness fix as much as an ergonomic one.** Observed merging #117: the
+  invocation was `/csw:merge #117` and the skill never read the argument — Step 1 resolved the
+  PR from the current branch and the stated number was decorative. It happened to match. Had
+  it not, the skill would have merged the current branch's PR while the transcript read as
+  though the named one was honoured, and nothing would have errored. A stated reference that
+  is ignored is worse than no reference at all. Steps 3 and 4 now take the resolved number
+  too, rather than falling back to the current branch's PR. (#118, was #107)
+- **`bin/csw-services`, and `/csw:cleanup` stops a worktree's services before removing it.**
+  Removing a worktree never stopped what was running in it: the directory went and the dev
+  server, the file watcher and the database container survived, with nothing left to identify
+  them by. So cleanup was not merely failing to tidy up, it was what *manufactured* orphans —
+  and the cost is not a wasted process but a test run going green against a database belonging
+  to a branch that shipped ten hours ago, with every precondition check passing. A healthy
+  orphan gets *adopted* rather than ignored, by every session that finds it on the expected
+  port, which is what makes one permanent. `csw-services` takes one worktree path and reads
+  origin out of bookkeeping the machine already keeps — `/proc/<pid>/cwd` for host processes,
+  `com.docker.compose.project.working_dir` for compose projects — so nothing is written and
+  nothing can go stale. It signals process groups, not pids, because the tree's leaf is what
+  holds the port. Supervised `systemctl --user` units, unlabelled containers and anything
+  outside the worktree are never touched, and there is no machine-wide acting mode. Teardown
+  is mandatory and unprompted, on the same rule as branch cleanup, and it names everything
+  before it signals it. `csw-sweep` reports the two populations it must not act on: what is
+  running from a stale worktree, and compose projects whose worktree is already gone. (#119)
+- **`docs/adr/`, and the first two records in it.** CSW now keeps its own ADRs, on the feature
+  1.1.0 shipped for everyone else. [ADR 0001][adr1] — dispose of mid-build discoveries before
+  the commit, not after the PR. [ADR 0002][adr2] — read the bookkeeping the OS already keeps
+  rather than keeping our own. Both are `Status: Proposed`.
+
+### Changed
+- **`csw:merge` retargets anything stacked on the branch it is about to delete.** This one
+  changes what `csw:merge` does to *other people's* pull requests, so read it before
+  upgrading. `--delete-branch` removes the head branch, and GitHub does not retarget a PR
+  whose base disappears — it **closes** it. Observed merging `trakrf/platform#556` with `#558`
+  stacked on it: `#558` went to `state: CLOSED`, still pointing at a branch that no longer
+  existed, reporting `CONFLICTING` for a conflict it did not have. Recovery does not work,
+  because both obvious repairs refuse while the base is missing — `gh pr edit --base` says the
+  base of a closed PR cannot be changed, `gh pr reopen` says the PR cannot be opened — and
+  what is left is recreating it by hand and losing its review history. So Step 4 now looks for
+  open PRs based on this PR's head branch **before** merging, retargets each onto this PR's
+  own base, and says which ones and onto what. A silently rebased stack is the same problem as
+  a silently chosen PR: correct, and invisible to anyone who would have wanted to disagree.
+  (#118, was #110)
+- **`BLOCKED` gets a truthful gloss and an escalation.** Step 3 used to gloss it as "typically
+  a missing review" and send you to a Step 4 with exactly one command, which then failed.
+  Observed merging #86: CI green, `required_approving_review_count` 0, no unresolved threads,
+  branch 0 behind — the block came from a repository **ruleset** (`update`, restrict updates
+  to matching refs) whose only bypass actor was the admin invoking the merge. `gh` printed the
+  answer and the skill had nothing to say, so the human was asked a question the tool had
+  already answered. `BLOCKED` is now stated as two states the status cannot distinguish, with
+  read-only probes to tell them apart: `--auto` for a requirement that is pending, `--admin`
+  for one that will never be met and that the invoker can bypass. (#118, was #88)
+- **`csw:merge` confirms an ADR riding in the PR.** 1.1.0 taught `csw:work` to write ADRs
+  unattended on the argument that *review is the filter, not the prompt* — and then nothing at
+  merge time ever looked, so "review is the filter" meant "someone was supposed to notice."
+  Gated on `adrDir`: empty, the default, and none of it runs, mirroring `csw:work` Step 8, so
+  no new prompt appears for anyone who has not opted in. Non-empty and the PR's changed files
+  are intersected with that directory; an ADR in the diff is named and confirmed before the
+  merge. A rider (above) can pre-answer it. (#118, was #108)
+- **`/csw:cleanup` will not propose closing a ticket while an acceptance item is uncovered.**
+  Cleanup Step 5 checked sibling PRs in other repos and then asked a human to close, with no
+  coverage evidence in front of them. It now confirms every ledger item is accounted for
+  across the merged PRs first; any item unaccounted → do not propose closure. Closing a ticket
+  still always asks. (#116)
+- **An ADR never satisfies an acceptance item, and its follow-through is never a ticket.** A
+  fault in the `adrDir` feature itself: Step 8 rewarded writing a decision down and said
+  nothing about whether the decision's follow-through was done, which made an ADR an
+  attractive way to *discharge* an item that actually demanded a behaviour change. The
+  dispatch's own diagnosis: *"I treated 'decide what the suite is FOR' as 'write a decision
+  down' rather than 'make it so.'"* The missing follow-through then surfaced as a ticket
+  candidate, which is duplicated bookkeeping — the ADR already says what is owed. Third rule,
+  narrower: **an ADR that asserts a mechanism verifies that mechanism before asserting it.**
+  ADR 0022 in the observed incident proposed gating against a per-PR preview deployment that
+  does not exist, merged anyway, and cost the *next* dispatch, which had to correct it while
+  implementing it. Revertibility assumes someone notices. (#116)
+- **`/csw:batch` reports coverage and absorbed work, and stops dispatching decide-shaped
+  tickets.** The subagent result contract grows `coverage` and `absorbed`, and the morning
+  summary grows an Absorbed work section on the same footing as ADRs proposed — a dispatch
+  that folded three adjacent fixes in has a larger diff than its ticket describes, and a
+  morning that cannot see that reviews it as though it were the ticket. Each absorption is its
+  own commit, so rejecting one is a revert, and the summary says so. Step 2 gains a fourth
+  exclusion, read off the ticket rather than computed: a ticket whose description asks for a
+  decision and that carries no `**CSW prep**` comment, or one whose open questions are not
+  `_None._`, is skipped with that as its reason. Prep already ended by declaring a ticket
+  dispatchable or not and nothing consumed the verdict. An unattended dispatch handed a
+  decision to make will make one, and nobody agreed to it. (#116)
+- **`/csw:cleanup` now needs `python3` 3.9+**, which previously only `/csw:batch` did. The
+  service teardown reads `/proc`, so its host-process arm is Linux only; elsewhere it says so
+  and still tears down compose projects, rather than reporting an empty result that reads as
+  "nothing running". (#119)
+- **CI selects shell scripts to lint by their shebang**, not by a denylist of exactly one
+  Python bin that every later Python bin had to be remembered into. `csw-services` was the
+  second, and CI failed with `SC1071` rather than saying so. (#119)
+
+### Fixed
+- **`csw-ticket branch` could leave a valid ticket id in the slug tail.** The slug was cut at
+  40 characters with no awareness of what the cut might be bisecting, so
+  `...-runs-vitest-only-tra-1206` truncated to `...-runs-vitest-only-tra-120` — a real,
+  unrelated ticket. Linear scans branch names for issue ids, matched `tra-120`, and dragged
+  TRA-120 out of Done, where it had been since 2025-10-30, into In Review. The PR body was
+  correct. Nothing errored and no check failed, because the wrong ticket is a real ticket, and
+  it reads as though someone deliberately reopened old work. Two rules now: any ticket-shaped
+  trailing segment is stripped, repeatedly, but **only when the cut actually shortened the
+  slug** — an untruncated title is what its author wrote, and stripping there would eat
+  ordinary tails like `roadmap-for-2026`; and a trailing reference to the repo's **own**
+  configured prefix is stripped unconditionally, because "Port the fix from TRA-120" reopens
+  TRA-120 exactly as a bisected tail does and a tracker cannot tell the two apart. (#125)
+- **`csw:work` restores the generated branch name after `EnterWorktree` renames it.** The
+  branch the ticket's `branchPattern` produced was silently replaced by the isolation tool's
+  own name, so the branch on the PR was not the branch the skill said it made. (#116)
+- **A `csw:batch` subagent handed a red baseline says what it did.** The stop-and-ask arm has
+  no human in the room at 3am; the row comes back as blocked with the baseline's output as the
+  reason, rather than the subagent choosing for itself. (#113)
+
+[adr1]: docs/adr/0001-dispose-of-discoveries-before-the-commit.md
+[adr2]: docs/adr/0002-read-os-bookkeeping-rather-than-keeping-our-own.md
+
 ## [1.1.0] - 2026-08-04
 
 The batch release. 1.0.0 could take one ticket to a pull request; 1.1.0 is the work needed
@@ -58,22 +256,6 @@ ticket that produced it is closed.
 - **`assert_guards` test helper** — scopes a needle to the region of a skill file that
   documents the behaviour, so reverting the behaviour deletes the region and the assertion
   goes red. (#69)
-- **`bin/csw-services`, and `/csw:cleanup` stops a worktree's services before removing it.**
-  Removing a worktree never stopped what was running in it: the directory went and the dev
-  server, the file watcher and the database container survived, with nothing left to identify
-  them by. So cleanup was not merely failing to tidy up, it was what *manufactured* orphans —
-  and the cost is not a wasted process but a test run going green against a database belonging
-  to a branch that shipped ten hours ago, with every precondition check passing. A healthy
-  orphan gets *adopted* rather than ignored, by every session that finds it on the expected
-  port, which is what makes one permanent. `csw-services` takes one worktree path and reads
-  origin out of bookkeeping the machine already keeps — `/proc/<pid>/cwd` for host processes,
-  `com.docker.compose.project.working_dir` for compose projects — so nothing is written and
-  nothing can go stale. It signals process groups, not pids, because the tree's leaf is what
-  holds the port. Supervised `systemctl --user` units, unlabelled containers and anything
-  outside the worktree are never touched, and there is no machine-wide acting mode. Teardown
-  is mandatory and unprompted, on the same rule as branch cleanup, and it names everything
-  before it signals it. `csw-sweep` reports the two populations it must not act on: what is
-  running from a stale worktree, and compose projects whose worktree is already gone. (#119)
 
 ### Changed
 - **`/csw:batch` dispatches each ticket to a fresh subagent.** Step 4 previously ran every
