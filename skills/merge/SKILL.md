@@ -89,14 +89,18 @@ you wait for the answer. Do not merge on a maybe.
 
 ## Step 3: Check CI
 
+Pass the number Step 1 resolved. Bare `gh pr checks` reads the *current branch's* PR, which is
+the right answer only when nobody named anything — and silently the wrong PR's CI the moment
+someone did:
+
 ```bash
-gh pr checks --watch --fail-fast
+gh pr checks <number> --watch --fail-fast
 ```
 
 - **Red** — stop. Report which checks failed and their output. Red CI ends the merge; it does
   not become a judgment call.
 - **Pending** — report what is still running and ask whether to wait or stop. If they say
-  wait, re-run `gh pr checks --watch --fail-fast` rather than idling.
+  wait, re-run `gh pr checks <number> --watch --fail-fast` rather than idling.
 - **Green** — continue.
 - **No checks configured** — `gh pr checks` finds nothing to report. Absence of checks is not
   the same as passing checks. Say so, and ask before merging.
@@ -149,9 +153,11 @@ The answer sorts the block into one of two shapes, and they are not interchangea
 
 **`--admin` overrides a protection someone configured deliberately.**
 **It is never yours to take.**
-Report what is blocking, say which of the two shapes it is and on what evidence, and ask. What this diagnosis buys is a question that can actually be answered — "the
-`non_fast_forward` rule blocks this and you are its bypass actor, merge with `--admin`?" rather
-than "it says `BLOCKED`, what do you want to do?"
+Report what is blocking, say which of the two shapes it is and on what evidence, and ask.
+
+What the diagnosis buys is a question that can actually be answered — "the `non_fast_forward`
+rule blocks this and you are its bypass actor, merge with `--admin`?" rather than "it says
+`BLOCKED`, what do you want to do?"
 
 Once the human authorises one, it goes on Step 4's command. `gh` rejects `--auto` and `--admin`
 together — they are answers to different questions — and `--admin` is the flag for *not meeting*
@@ -270,7 +276,13 @@ relies on. If Step 4 did not confirm success, stop there; do not continue into S
 Once the merge is confirmed, roughly always it is followed by cleanup: go straight into
 **csw:cleanup** without asking.
 
-The exception is when the human has explicitly said to stay put — "merge but leave the
+**Only when the merged PR was the current branch's.** `csw:cleanup` acts on the worktree you
+are standing in, not on the PR that just merged, and Step 1 can now land a PR belonging to some
+other branch entirely. Chaining after one of those would remove a worktree with unrelated work
+still in it. When the merged PR is not the current branch's, say the merge landed, say cleanup
+is being skipped and why, and leave this worktree alone.
+
+The other exception is when the human has explicitly said to stay put — "merge but leave the
 worktree, I want to check something." Then say plainly that cleanup is being skipped and
 that the worktree and branch are still there.
 
@@ -292,3 +304,4 @@ that the worktree and branch are still there.
 | "Deleting the branch will just retarget anything stacked on it" | It closes it. Check for dependents and retarget them first. |
 | "If a stacked PR closes, I'll reopen it after" | You can't. Closed PRs won't change base, and won't reopen without one. |
 | "The ADR was in the diff they approved" | It was written unattended. Name it, so approving it is a thing someone did. |
+| "Merged, so chain into cleanup as always" | Not if it was someone else's PR. Cleanup removes *this* worktree. |

@@ -489,6 +489,19 @@ assert_guards "$merge" '^## Step 4: Merge' '^## Step 5: Chain into cleanup' \
 assert_guards "$merge" '^### Before the merge: an ADR' '^### The merge' \
   "none of the rest" "merge: an empty adrDir runs none of the ADR gate"
 
+# --- merge: everything downstream of Step 1 uses the PR Step 1 resolved ---
+#
+# Once Step 1 can resolve a PR other than the current branch's, every later command that
+# defaults to the current branch is aimed at the wrong object. `gh pr checks` with no argument
+# would gate on a different PR's CI, and csw:cleanup acts on the current worktree, so chaining
+# into it after merging someone else's PR tears down the wrong one.
+assert_guards "$merge" '^## Step 3: Check CI' '^## Step 4: Merge' \
+  "gh pr checks <number>" "merge: checks CI for the resolved PR, not for the current branch"
+assert_guards "$merge" '^## Step 5: Chain into cleanup' '^## Red flags' \
+  "current branch" "merge: cleanup only chains when the merged PR is this worktree's"
+assert_contains "$merge_red_flags" "someone else's PR" \
+  "merge: red flags catch cleaning up a worktree the merge did not belong to"
+
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"
 assert_guards "$cleanup" '^## Step 4: Sweep for everything else' \
