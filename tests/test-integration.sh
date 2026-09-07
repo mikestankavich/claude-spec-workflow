@@ -27,6 +27,11 @@ assert_eq "$(printf 'web/app/nav/Menu.tsx\n' | in_dir "$repo" "$BIN/csw-gates" -
 # --- Every executable in bin/ is executable and starts with a #!/usr/bin/env shebang. ---
 for f in "$REPO_ROOT"/bin/*; do
   name=$(basename "$f")
+  # Directories are not tools. Importing a Python bin as a module -- which is
+  # the obvious way to poke at one while debugging -- leaves a bin/__pycache__
+  # behind, and `head` on a directory reported it as a missing shebang, which
+  # names neither the cause nor the fix.
+  [ -d "$f" ] && continue
   if [ -x "$f" ]; then
     PASSES=$((PASSES + 1))
   else

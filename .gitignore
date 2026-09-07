@@ -26,3 +26,6 @@ Thumbs.db
 
 # Local environment (secrets/local config)
 .env.local
+
+# Python bytecode, e.g. from importing a bin as a module while debugging.
+__pycache__/
