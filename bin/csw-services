@@ -1,0 +1,742 @@
+#!/usr/bin/env python3
+"""csw-services — report and stop whatever is running from one worktree.
+
+Removing a worktree does not stop what was running in it. The directory goes;
+the dev server, the file watcher, the database container and the port bindings
+survive. So cleanup does not merely fail to tidy up — it is what *manufactures*
+orphans, because removing the worktree is the moment those processes stop having
+a valid home and become indistinguishable from the live session's. The cost is
+not the wasted process: it is a test run going green against a backend, frontend
+or database belonging to a different branch, with every precondition passing.
+
+Origin is the criterion, and the machine already records it. The kernel keeps
+/proc/<pid>/cwd; the container runtime keeps
+com.docker.compose.project.working_dir. Neither can go stale, because each
+record is maintained by the thing it describes — which is why this tool
+discovers rather than reading a ledger CSW would have to write and keep correct.
+It also means adoption is irrelevant: a later session attaching to a service
+does not change where that service came from.
+
+Scope safety is structural. Every acting subcommand takes a worktree path and
+can only ever reach what originated under it. There is no machine-wide acting
+mode to misuse. This is not a zombie reaper — it is responsible for the mess
+cleanup made, and everything else on the machine is somebody else's business,
+however stale it looks.
+
+Three exclusions, all load-bearing rather than tidiness:
+
+  1. Supervised units. A systemd --user service is *designed* to outlive every
+     session. The test is supervision, not uptime: an 18-hour supervised bridge
+     is correct and a 10-hour orphaned container is not, and nothing that only
+     looks at age can tell them apart.
+  2. Anything carrying no worktree origin — buildkit, an editor's MCP server, a
+     database started from the main checkout. Absence of the label is the test.
+  3. Anything outside the worktree passed in.
+
+Two shapes leave no origin trace and are accepted gaps: a process that
+daemonised and chdir'd away, and a container started with plain `docker run`
+rather than compose. See docs/adr/0002.
+"""
+
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+# Test seams. Both default to the real thing; the tests point them at fixtures
+# so the exclusions can be exercised on a machine with no docker and no
+# systemd --user units.
+PROC = os.environ.get("CSW_SERVICES_PROC", "/proc")
+DOCKER = os.environ.get("CSW_SERVICES_DOCKER", "docker")
+
+# `docker ps` is asked for exactly the fields this tool decides on: the
+# container's name for the report, the two compose labels for origin, and
+# status/ports so a human can recognise what is about to be torn down.
+DOCKER_PS_FORMAT = (
+    '{{.Names}}\t'
+    '{{.Label "com.docker.compose.project.working_dir"}}\t'
+    '{{.Label "com.docker.compose.project"}}\t'
+    '{{.Status}}\t'
+    '{{.Ports}}'
+)
+
+USAGE = """\
+Usage:
+  csw-services report <worktree>   What is running from that worktree. Acts on nothing.
+  csw-services json <worktree>     The same, as JSON.
+  csw-services stop <worktree>     Name it, then stop it. [--grace <seconds>, default 5]
+  csw-services orphans             Report-only: compose projects under this repo's
+                                   worktreeDir whose worktree no longer exists.
+
+Finding nothing is success and exits 0. Every acting subcommand takes a worktree
+path and can only reach what originated under it; there is no machine-wide mode.
+"""
+
+
+def die(message, status=2):
+    """One line, one house prefix, matching the four shell tools in this directory."""
+    sys.stderr.write("csw-services: %s\n" % message)
+    sys.exit(status)
+
+
+# --- config ------------------------------------------------------------------
+
+
+def load_config():
+    """Read csw-config, propagating its own exit code rather than guessing."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    proc = subprocess.run(
+        [os.path.join(here, "csw-config"), "json"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        # csw-config's message already carries a "csw-config: " prefix; strip it
+        # so exactly one house prefix reaches the user, matching
+        # bin/csw-batch-filter and bin/csw-sweep's config_get().
+        detail = proc.stderr.strip()
+        if detail.startswith("csw-config: "):
+            detail = detail[len("csw-config: "):]
+        sys.stderr.write(
+            "csw-services: could not read config (csw-config exited %d): %s\n"
+            % (proc.returncode, detail)
+        )
+        sys.exit(proc.returncode)
+    try:
+        return json.loads(proc.stdout)
+    except ValueError as exc:
+        die("csw-config emitted output that is not JSON: %s" % exc, 4)
+
+
+def repo_toplevel():
+    proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
+    if proc.returncode != 0:
+        die("not inside a git repository", 3)
+    return proc.stdout.strip()
+
+
+def worktree_dir():
+    """The absolute, resolved directory this repo puts its worktrees in.
+
+    This is what scopes the `orphans` report: a compose project whose
+    working_dir names a path under here that no longer exists is provably a
+    worktree CSW itself created and removed.
+    """
+    configured = load_config().get("worktreeDir") or ".claude/worktrees"
+    return os.path.realpath(os.path.join(repo_toplevel(), configured))
+
+
+# --- host processes, by the cwd the kernel already records --------------------
+
+
+def host_supported():
+    """Whether host-process discovery can run at all.
+
+    It is /proc that carries cwd, and macOS has no equivalent this tool reads.
+    When this is false the host arm says so explicitly — a silent empty result
+    would read as "nothing running", which is the one answer it must never give
+    by accident.
+    """
+    return os.path.isdir(os.path.join(PROC, "self"))
+
+
+def read_link(pid, name):
+    try:
+        target = os.readlink(os.path.join(PROC, str(pid), name))
+    except OSError:
+        return None
+    # The kernel appends " (deleted)" once the directory is unlinked. That is
+    # precisely the orphan case — the worktree is gone and the process is still
+    # running — so the suffix is stripped rather than treated as a different
+    # path.
+    if target.endswith(" (deleted)"):
+        target = target[: -len(" (deleted)")]
+    return target
+
+
+def proc_stat_fields(pid):
+    """Fields of /proc/<pid>/stat from `state` onwards, 0-indexed.
+
+    Parsed from the *last* ')' rather than by splitting on whitespace: field 2
+    is `comm`, which is parenthesised and may itself contain spaces and
+    parentheses. Splitting naively mis-numbers every field after it, which is
+    how a process group id silently becomes a nice value.
+    """
+    try:
+        with open(os.path.join(PROC, str(pid), "stat"), "r") as handle:
+            raw = handle.read()
+    except OSError:
+        return None
+    close = raw.rfind(")")
+    if close == -1:
+        return None
+    return raw[close + 1:].split()
+
+
+def uptime_seconds():
+    try:
+        with open(os.path.join(PROC, "uptime"), "r") as handle:
+            return float(handle.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def age_seconds(starttime_ticks):
+    up = uptime_seconds()
+    if up is None:
+        return None
+    try:
+        ticks = os.sysconf("SC_CLK_TCK") or 100
+    except (ValueError, OSError):
+        ticks = 100
+    return max(0, int(up - (starttime_ticks / float(ticks))))
+
+
+def command_of(pid):
+    base = os.path.join(PROC, str(pid))
+    try:
+        with open(os.path.join(base, "cmdline"), "rb") as handle:
+            raw = handle.read()
+        parts = [p.decode("utf-8", "replace") for p in raw.split(b"\0") if p]
+        if parts:
+            return " ".join(parts)
+    except OSError:
+        pass
+    try:
+        with open(os.path.join(base, "comm"), "r") as handle:
+            return handle.read().strip()
+    except OSError:
+        return "?"
+
+
+def is_supervised(pid):
+    """True when a supervisor owns this process, so it is never ours to stop.
+
+    Reads the supervisor's own bookkeeping rather than shelling out to
+    systemctl once per pid: /proc/<pid>/cgroup's leaf is a `.service` for a unit
+    systemd owns and restarts, and a `.scope` for a process a session merely
+    launched. The two cannot disagree with what systemd actually thinks, because
+    it is what systemd wrote.
+    """
+    try:
+        with open(os.path.join(PROC, str(pid), "cgroup"), "r") as handle:
+            lines = [line.strip() for line in handle if line.strip()]
+    except OSError:
+        return False
+    if not lines:
+        return False
+    leaf = lines[-1].split("/")[-1]
+    return leaf.endswith(".service")
+
+
+def protected_pids():
+    """The caller's own chain, which must never be a candidate however well it matches.
+
+    csw:cleanup invokes this from *inside* the worktree it is about to remove,
+    so the calling session's whole process tree has a cwd under that worktree
+    and matches the origin test exactly. Without this set, the tool's first act
+    is to kill its own caller.
+
+    Self and ancestors only — deliberately not "everything sharing our process
+    group". Without job control a shell's background jobs inherit its group, so
+    excluding the group would protect exactly the `npm run dev &` this exists to
+    stop. A same-group process that is not an ancestor is a real candidate; it
+    is signalled individually rather than by group, in _signal_groups().
+
+    Computed from the real proc tree, not PROC: self and its ancestors are real
+    pids regardless of where candidates are being read from.
+    """
+    protected = set()
+    try:
+        me = os.getpid()
+        protected.add(me)
+        protected.add(os.getppid())
+    except OSError:
+        return protected
+
+    # Walk to pid 1. Bounded, so a malformed proc tree cannot loop forever.
+    current = me
+    for _ in range(64):
+        try:
+            with open("/proc/%d/status" % current, "r") as handle:
+                match = re.search(r"^PPid:\s+(\d+)", handle.read(), re.M)
+        except OSError:
+            break
+        if not match:
+            break
+        current = int(match.group(1))
+        protected.add(current)
+        if current <= 1:
+            break
+    return protected
+
+
+def _numeric_pids():
+    try:
+        entries = os.listdir(PROC)
+    except OSError:
+        return []
+    return sorted(int(e) for e in entries if e.isdigit())
+
+
+def listening_ports():
+    """{pid: [ports]} for listening TCP sockets.
+
+    Two hops, both through bookkeeping that already exists: /proc/net/tcp maps a
+    socket inode to a listening port, and /proc/<pid>/fd maps a pid to its
+    inodes. A socket owned by another user is skipped rather than raising, so a
+    port simply goes unreported instead of failing the run.
+    """
+    inode_port = {}
+    for name in ("net/tcp", "net/tcp6"):
+        path = os.path.join(PROC, name)
+        try:
+            with open(path, "r") as handle:
+                next(handle, None)  # header
+                for line in handle:
+                    parts = line.split()
+                    if len(parts) < 10 or parts[3] != "0A":  # 0A == LISTEN
+                        continue
+                    try:
+                        port = int(parts[1].split(":")[1], 16)
+                        inode_port[parts[9]] = port
+                    except (ValueError, IndexError):
+                        continue
+        except OSError:
+            continue
+    if not inode_port:
+        return {}
+
+    by_pid = {}
+    for pid in _numeric_pids():
+        fd_dir = os.path.join(PROC, str(pid), "fd")
+        try:
+            fds = os.listdir(fd_dir)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                target = os.readlink(os.path.join(fd_dir, fd))
+            except OSError:
+                continue
+            if not target.startswith("socket:["):
+                continue
+            inode = target[len("socket:["):-1]
+            if inode in inode_port:
+                by_pid.setdefault(pid, set()).add(inode_port[inode])
+    return {pid: sorted(ports) for pid, ports in by_pid.items()}
+
+
+def find_processes(worktree):
+    """Host processes that originated in this worktree, exclusions applied."""
+    if not host_supported():
+        return []
+    protected = protected_pids()
+    ports = listening_ports()
+    found = []
+    for pid in _numeric_pids():
+        if pid in protected:
+            continue
+        cwd = read_link(pid, "cwd")
+        if cwd is None:
+            continue
+        if cwd != worktree and not cwd.startswith(worktree + os.sep):
+            continue
+        if is_supervised(pid):
+            continue
+        fields = proc_stat_fields(pid)
+        if not fields or len(fields) < 20:
+            continue
+        try:
+            pgid = int(fields[2])
+            age = age_seconds(int(fields[19]))
+        except ValueError:
+            continue
+        found.append(
+            {
+                "pid": pid,
+                "pgid": pgid,
+                "command": command_of(pid),
+                "ageSeconds": age,
+                "ports": ports.get(pid, []),
+                "cwd": cwd,
+            }
+        )
+    return found
+
+
+# --- compose projects, by the label the runtime already records ---------------
+
+
+def docker_ps():
+    """([row, ...], note). A row is (name, working_dir, project, status, ports)."""
+    if shutil.which(DOCKER) is None:
+        # No docker means no containers. A note here would fire on every run on
+        # every machine that does not use it, which teaches the reader to skip
+        # note lines — and those lines are load-bearing elsewhere.
+        return [], None
+    proc = subprocess.run(
+        [DOCKER, "ps", "--no-trunc", "--format", DOCKER_PS_FORMAT],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr.strip().splitlines() or [""])[0]
+        return [], (
+            "note: docker is installed but not answering (%s); compose projects are "
+            "unknown, not absent" % detail
+        )
+    rows = []
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 5:
+            continue
+        rows.append(tuple(part.strip() for part in parts))
+    return rows, None
+
+
+def _group(rows):
+    projects = {}
+    for name, working_dir, project, status, ports in rows:
+        entry = projects.setdefault(
+            project, {"project": project, "workingDir": working_dir, "containers": []}
+        )
+        entry["containers"].append({"name": name, "status": status, "ports": ports})
+    return [projects[key] for key in sorted(projects)]
+
+
+def find_compose_projects(worktree, rows=None):
+    """Compose projects whose working_dir is this worktree, or inside it.
+
+    An empty working_dir label is exclusion 2 and never matches. Matching it
+    would sweep in every non-compose container on the machine — buildkit, an
+    editor's MCP server — which is exactly the neutron-bomb version this is not.
+    """
+    if rows is None:
+        rows, _ = docker_ps()
+    keep = []
+    for row in rows:
+        working_dir = row[1]
+        project = row[2]
+        if not working_dir or not project:
+            continue
+        resolved = os.path.realpath(working_dir)
+        if resolved == worktree or resolved.startswith(worktree + os.sep):
+            keep.append(row)
+    return _group(keep)
+
+
+def find_orphan_projects(worktrees_root, rows=None):
+    """Compose projects provably ours by origin, and abandoned.
+
+    A working_dir under this repo's worktreeDir naming a path that does not
+    exist can only have come from a worktree CSW created and removed. It is
+    CSW's own mess — just not the worktree any live cleanup run owns, which is
+    why these are reported and never touched.
+    """
+    if rows is None:
+        rows, _ = docker_ps()
+    keep = []
+    for row in rows:
+        working_dir = row[1]
+        project = row[2]
+        if not working_dir or not project:
+            continue
+        if os.path.exists(working_dir):
+            continue
+        resolved = os.path.realpath(working_dir)
+        if resolved == worktrees_root or resolved.startswith(worktrees_root + os.sep):
+            keep.append(row)
+    return _group(keep)
+
+
+# --- collection and rendering -------------------------------------------------
+
+
+def normalise_worktree(path):
+    if not path:
+        die("a worktree path is required", 2)
+    # The path need not exist: `orphans` and the sweep both ask about paths that
+    # are already gone, which is the whole orphan case.
+    return os.path.realpath(path)
+
+
+def collect(worktree):
+    rows, docker_note = docker_ps()
+    notes = []
+    supported = host_supported()
+    if not supported:
+        notes.append(
+            "note: host processes: not supported on %s (needs /proc); check by hand "
+            "with `lsof -a -d cwd %s`" % (sys.platform, worktree)
+        )
+    if docker_note:
+        notes.append(docker_note)
+    return {
+        "worktree": worktree,
+        "platform": sys.platform,
+        "hostProcessesSupported": supported,
+        "processes": find_processes(worktree),
+        "composeProjects": find_compose_projects(worktree, rows),
+        "notes": notes,
+    }
+
+
+def render_age(seconds):
+    if seconds is None:
+        return "?"
+    if seconds >= 3600:
+        return "%dh%02dm" % (seconds // 3600, (seconds % 3600) // 60)
+    if seconds >= 60:
+        return "%dm" % (seconds // 60)
+    return "%ds" % seconds
+
+
+def render_report(data):
+    lines = []
+    # Notes first, and whether or not anything was found: they say how far the
+    # answer reaches, and an answer whose limits arrive after it has already
+    # been read is not much of a caveat.
+    lines.extend(data["notes"])
+
+    processes = data["processes"]
+    projects = data["composeProjects"]
+
+    if processes:
+        lines.append("host processes from %s:" % data["worktree"])
+        for entry in processes:
+            ports = (
+                ", " + ", ".join(":%d" % port for port in entry["ports"])
+                if entry["ports"]
+                else ""
+            )
+            lines.append(
+                "  pid %d (pgid %d, %s%s) %s"
+                % (
+                    entry["pid"],
+                    entry["pgid"],
+                    render_age(entry["ageSeconds"]),
+                    ports,
+                    entry["command"][:120],
+                )
+            )
+    if projects:
+        lines.append("compose projects from %s:" % data["worktree"])
+        for project in projects:
+            lines.append("  %s" % project["project"])
+            for container in project["containers"]:
+                detail = ", ".join(
+                    part for part in (container["status"], container["ports"]) if part
+                )
+                lines.append("    %s (%s)" % (container["name"], detail))
+    if not processes and not projects:
+        lines.append("nothing running from %s" % data["worktree"])
+    return "\n".join(lines)
+
+
+# --- stop ---------------------------------------------------------------------
+
+
+def stop(worktree, grace):
+    data = collect(worktree)
+    # Named before it is touched. Cleanup does not ask — that is deliberate, and
+    # it is what makes naming the whole of the review surface. A test harness
+    # interrupted mid-run costs a measurement; not knowing it was interrupted
+    # costs an afternoon.
+    print(render_report(data))
+
+    projects = data["composeProjects"]
+    processes = data["processes"]
+    if not projects and not processes:
+        return 0
+
+    stopped_projects = 0
+    # Containers first. `docker compose down` is graceful by construction, and a
+    # container that bind-mounts the worktree can leave root-owned files behind
+    # that a later non-root `git worktree remove` cannot delete.
+    for project in projects:
+        proc = subprocess.run(
+            [DOCKER, "compose", "-p", project["project"], "down"],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode == 0:
+            stopped_projects += 1
+            print("stopped compose project %s" % project["project"])
+        else:
+            detail = (proc.stderr.strip().splitlines() or [""])[0]
+            print(
+                "could not stop compose project %s: %s"
+                % (project["project"], detail)
+            )
+
+    stopped_groups = _signal_groups(processes, grace)
+
+    print(
+        "stopped: %d process group(s), %d compose project(s)"
+        % (stopped_groups, stopped_projects)
+    )
+    return 0
+
+
+def _signal_groups(processes, grace):
+    """TERM the process groups, then KILL what is left.
+
+    The *group*, not the pids: the observed trees run 5-7 levels deep
+    (pnpm -> node -> sh -> node -> sh -> node -> node), and killing a parent
+    leaves the leaf holding the port — which is the failure this exists to
+    prevent.
+    """
+    try:
+        my_pgid = os.getpgid(0)
+    except OSError:
+        my_pgid = None
+
+    groups = set()
+    strays = []
+    for entry in processes:
+        # A candidate sharing our own group is signalled individually. Taking
+        # the group down would take the caller with it, and a process that
+        # merely inherited our group is still the worktree's to stop.
+        if my_pgid is not None and entry["pgid"] == my_pgid:
+            strays.append(entry["pid"])
+        else:
+            groups.add(entry["pgid"])
+
+    for pgid in sorted(groups):
+        _send(os.killpg, pgid, signal.SIGTERM)
+    for pid in strays:
+        _send(os.kill, pid, signal.SIGTERM)
+
+    deadline = time.time() + grace
+    while time.time() < deadline:
+        if not _any_alive(groups, strays):
+            break
+        time.sleep(0.1)
+
+    for pgid in sorted(groups):
+        if _group_alive(pgid):
+            _send(os.killpg, pgid, signal.SIGKILL)
+    for pid in strays:
+        if _pid_alive(pid):
+            _send(os.kill, pid, signal.SIGKILL)
+
+    return len(groups) + len(strays)
+
+
+def _send(fn, target, sig):
+    try:
+        fn(target, sig)
+    except ProcessLookupError:
+        # It exited on its own. That is the outcome we wanted.
+        pass
+    except PermissionError:
+        print("could not signal %d: permission denied" % target)
+
+
+def _pid_alive(pid):
+    return os.path.exists(os.path.join(PROC, str(pid)))
+
+
+def _group_alive(pgid):
+    for pid in _numeric_pids():
+        fields = proc_stat_fields(pid)
+        if fields and len(fields) > 2:
+            try:
+                if int(fields[2]) == pgid:
+                    return True
+            except ValueError:
+                continue
+    return False
+
+
+def _any_alive(groups, strays):
+    return any(_group_alive(pgid) for pgid in groups) or any(
+        _pid_alive(pid) for pid in strays
+    )
+
+
+# --- orphans ------------------------------------------------------------------
+
+
+def orphans():
+    """Report-only, for the population no live cleanup run owns.
+
+    Report-only because what makes teardown safe elsewhere is that a live
+    cleanup run owns the worktree, and here nothing does. Without this line the
+    design would be silent about every orphan created before it shipped.
+    """
+    root = worktree_dir()
+    rows, note = docker_ps()
+    if note:
+        print(note)
+    found = find_orphan_projects(root, rows)
+    if not found:
+        print("no orphaned compose projects")
+        return 0
+    for project in found:
+        for container in project["containers"]:
+            detail = ", ".join(
+                part for part in (container["ports"], container["status"]) if part
+            )
+            print("orphaned compose project: %s (%s)" % (project["project"], detail))
+        print("  working_dir: %s — no longer exists" % project["workingDir"])
+    return 0
+
+
+# --- entry point --------------------------------------------------------------
+
+
+def main(argv):
+    if not argv:
+        sys.stderr.write(USAGE)
+        sys.exit(2)
+
+    command = argv[0]
+    rest = argv[1:]
+
+    if command in ("-h", "--help"):
+        sys.stdout.write(USAGE)
+        return 0
+
+    if command == "orphans":
+        if rest:
+            die("orphans takes no arguments (it reports, it never acts)", 2)
+        return orphans()
+
+    if command in ("report", "json", "stop"):
+        if not rest:
+            die("%s needs a worktree path" % command, 2)
+        worktree = normalise_worktree(rest[0])
+        grace = 5
+        extra = rest[1:]
+        if command == "stop" and extra[:1] == ["--grace"]:
+            if len(extra) < 2:
+                die("--grace needs a number of seconds", 2)
+            try:
+                grace = int(extra[1])
+            except ValueError:
+                die("--grace needs a number of seconds, got: %s" % extra[1], 2)
+            extra = extra[2:]
+        if extra:
+            die("unexpected argument: %s" % extra[0], 2)
+
+        if command == "json":
+            print(json.dumps(collect(worktree), indent=2))
+            return 0
+        if command == "report":
+            print(render_report(collect(worktree)))
+            return 0
+        return stop(worktree, grace)
+
+    die("unknown subcommand: %s" % command, 2)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
