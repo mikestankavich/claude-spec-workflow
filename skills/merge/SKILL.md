@@ -2,22 +2,77 @@
 name: merge
 description: Merge the reviewed pull request for the current branch, then hand straight off to cleanup. Use when a human green-lights an open PR.
 when_to_use: "go for merge", "diffs look good", "merge it", "ship it", "land it", "approved, merge"
+argument-hint: "[pr-or-ticket-ref]"
 ---
 
 # Merge a reviewed pull request
 
 **Announce at start:** "Using csw:merge to land PR #<n>."
 
-## Step 1: Find the PR
+## Step 1: Resolve the PR
+
+The invocation optionally carries one reference. **Bare `/csw:merge` is unchanged** — it means
+the pull request for the current branch:
 
 ```bash
 gh pr view --json number,title,url,isDraft,mergeable,mergeStateStatus,baseRefName,headRefName
 ```
 
-If there is no PR for the current branch, say so and stop. If the PR is a **draft**, stop:
-draft means the work told you it was not a merge candidate. Ask whether to mark it ready
-first. If more than one PR is open for this branch, list them and ask which to merge. Never
-pick.
+**`/csw:merge <ref>` names the pull request, and the reference is not decorative.** Resolve it.
+Never fall through to the current branch's PR because the reference was harder to read than
+`gh pr view` with no argument.
+
+- **A prefixed reference** — `ENG-92` — is a **ticket**. Resolve it to the PR that closes it,
+  below.
+- **A bare number, or `#92`, on `tracker: github`** is either an issue or a pull request.
+  GitHub numbers both out of one sequence per repository, so the number is never ambiguous
+  about which object it names — but you have to ask, and you have to ask about the **PR**:
+
+  ```bash
+  gh pr view 92 --json number,title,url,isDraft,mergeable,mergeStateStatus,baseRefName,headRefName
+  ```
+
+  It resolves, and 92 is the pull request. It fails with `Could not resolve to a PullRequest
+  with the number of 92`, and 92 is an issue — resolve it to its PR below.
+
+  **Do not run `gh issue view` to make this decision.** GitHub models a pull request as a kind
+  of issue, so `gh issue view <n>` on a PR number *succeeds* and hands back the PR. Every
+  number looks like an issue to it, which is why the discriminating question is the one asked
+  above.
+
+- **A bare number on any other tracker** is a PR number. There every ticket reference carries a
+  prefix, so a bare number has nothing else it could mean.
+
+### Ticket to pull request
+
+```bash
+gh issue view <n> --json closedByPullRequestsReferences
+```
+
+That field only sees pull requests linked by a closing keyword. `csw:work` writes `Closes
+<TICKET>` **or** `Refs <TICKET>`, and a `Refs` body links nothing at all — so an empty result
+is not yet an answer. Search before concluding there is no PR:
+
+```bash
+gh pr list --state open --search "<TICKET>" --json number,title,baseRefName,headRefName
+```
+
+### Then say which reading you used
+
+Before anything is merged, **say which reading you used** and on what basis — "PR #92, from
+issue #92", or "PR #92, named directly". A merge is one-way, and naming the object out loud is
+what lets someone stop the run while stopping is still free.
+
+### Stops
+
+- **No PR for the current branch**, on a bare invocation. Say so and stop.
+- **No PR for the ticket.** Say so and stop. Do not go looking for a plausible nearby branch.
+- **More than one candidate.** List them and ask which to merge. Never pick.
+- **The reference resolves to a PR that is not the current branch's PR.** Report both and ask.
+  Neither one silently wins. A reference gets stated precisely when several PRs are open, which
+  is exactly the situation in which quietly preferring one would do the most damage.
+- **The PR is a draft.** Draft means the work told you it was not a merge candidate. Ask
+  whether to mark it ready first.
 
 ## Step 2: Check that they actually said merge
 
@@ -115,3 +170,5 @@ that the worktree and branch are still there.
 | "The PR is a draft but the work looks done" | Draft was a deliberate signal. Ask before promoting it. |
 | "The merge command ran, I can move on" | Check its exit status. A failed merge followed by cleanup anyway orphans the PR. |
 | "No checks means nothing to block on" | Absence of checks isn't a green light. Ask before merging. |
+| "They named a PR, but `gh pr view` already found one" | Then the stated reference was decorative and the transcript lies. Resolve what they said. |
+| "The number they gave is the branch's PR anyway" | You know that only after resolving it. Resolve it, then say which reading you used. |

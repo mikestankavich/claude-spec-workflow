@@ -151,6 +151,7 @@ A different project is a config file, not a fork. Full reference:
 | `/csw:work <ticket>` | Dispatch | Command, or "work ENG-1088" |
 | `/csw:work <ticket> interactive` | Dispatch | Brainstorms first, then the same run |
 | `/csw:merge` | Merge | Usually natural language: "go for merge" |
+| `/csw:merge <ref>` | Merge | Names the PR (`#92`) or its ticket (`ENG-92`) instead of the current branch |
 | `/csw:cleanup` | Cleanup | Usually automatic, chained from merge |
 | `/csw:batch` | Nightly loop | Command only — never inferred |
 | `/csw:batch --dry-run` | Nightly loop | Selection only, no side effects |

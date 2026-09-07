@@ -407,6 +407,33 @@ assert_eq "$(fm_field "$merge" 'disable-model-invocation')" "" "merge: stays mod
 assert_contains "$(cat "$merge")" "only ever entered after a confirmed merge" "merge: cleanup gated on a confirmed merge"
 assert_contains "$(cat "$merge")" "BLOCKED" "merge: covers mergeStateStatus BLOCKED"
 
+# --- merge: a stated reference is resolved, not decorative ---
+#
+# #118: `/csw:merge #117` was dispatched and Step 1 resolved the PR from the current branch,
+# so the stated number never reached anything. It happened to match. These assertions are
+# scoped to Step 1 because that is the region that resolves the reference — revert the
+# resolution and the region goes with it.
+assert_contains "$(fm_field "$merge" 'argument-hint')" "ref" "merge: takes a reference"
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "Could not resolve to a PullRequest" \
+  "merge: discriminates a PR number from an issue number by asking gh about the PR"
+# `gh issue view` on a PR number succeeds and hands back the PR, so it cannot be the
+# discriminator. A reader who does not know that will reach for it first.
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "gh issue view" \
+  "merge: names the gh issue view trap rather than leaving it to be discovered"
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "closedByPullRequestsReferences" "merge: resolves a ticket to its PR"
+assert_guards "$merge" '^## Step 1: Resolve the PR' '^## Step 2: Check that they actually' \
+  "Never pick" "merge: more than one candidate is a stop, not a choice"
+# The reading has to be *said*, because a merge is one-way: naming the object is what lets
+# someone stop the run while stopping is still free.
+assert_contains "$(cat "$merge")" "say which reading" \
+  "merge: states which reading of the reference was used before merging"
+merge_red_flags=$(sed -n '/^## Red flags/,$p' "$merge")
+assert_contains "$merge_red_flags" "decorative" \
+  "merge: red flags catch a stated reference that was never read"
+
 # --- cleanup: sweeps unprompted, asks only about the tracker ---
 cleanup="$SKILLS/cleanup/SKILL.md"
 assert_guards "$cleanup" '^## Step 4: Sweep for everything else' \
