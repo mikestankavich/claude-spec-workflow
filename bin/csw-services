@@ -9,13 +9,25 @@ a valid home and become indistinguishable from the live session's. The cost is
 not the wasted process: it is a test run going green against a backend, frontend
 or database belonging to a different branch, with every precondition passing.
 
-Origin is the criterion, and the machine already records it. The kernel keeps
-/proc/<pid>/cwd; the container runtime keeps
-com.docker.compose.project.working_dir. Neither can go stale, because each
-record is maintained by the thing it describes — which is why this tool
-discovers rather than reading a ledger CSW would have to write and keep correct.
-It also means adoption is irrelevant: a later session attaching to a service
-does not change where that service came from.
+Origin is the criterion, and the machine already records it — in four places,
+none of which can go stale, because each record is maintained by the thing it
+describes. That is why this tool discovers rather than reading a ledger CSW
+would have to write and keep correct, and it is why adoption is irrelevant: a
+later session attaching to a service does not change where it came from.
+
+  /proc/<pid>/cwd   launched from the worktree. The primary signal.       -> stop
+  /proc/<pid>/exe   the running image is a build artifact of the tree
+                    (`air` compiles ./tmp/main, execs it, chdir's away)   -> stop
+  /proc/<pid>/fd/*  merely holding a file open in the tree: use, not
+                    origin                                                -> report
+  com.docker.compose.project.working_dir                                  -> stop
+
+The fd row is reported rather than stopped, and both halves of that matter. An
+editor or LSP did not come from this worktree, so killing it is a blast radius
+this tool must not have. But removal still *breaks* it, silently: the descriptor
+goes on pointing at a deleted inode, and an inotify watch on a deleted directory
+never fires again. An orphan survives and is wrongly adopted; a holder survives
+and stops working. Naming it makes it the human's call.
 
 Scope safety is structural. Every acting subcommand takes a worktree path and
 can only ever reach what originated under it. There is no machine-wide acting
@@ -33,9 +45,10 @@ Three exclusions, all load-bearing rather than tidiness:
      database started from the main checkout. Absence of the label is the test.
   3. Anything outside the worktree passed in.
 
-Two shapes leave no origin trace and are accepted gaps: a process that
-daemonised and chdir'd away, and a container started with plain `docker run`
-rather than compose. See docs/adr/0002.
+Two shapes still leave no origin trace and are accepted gaps: an *interpreted*
+process that daemonised and chdir'd away (a compiled one is caught by exe), and
+a container started with plain `docker run` rather than compose. See
+docs/adr/0002.
 """
 
 import json
@@ -335,8 +348,30 @@ def listening_ports():
     return {pid: sorted(ports) for pid, ports in by_pid.items()}
 
 
+def _inside(path, worktree):
+    return path is not None and (
+        path == worktree or path.startswith(worktree + os.sep)
+    )
+
+
 def find_processes(worktree):
-    """Host processes that originated in this worktree, exclusions applied."""
+    """Host processes that *originated* in this worktree, exclusions applied.
+
+    Two origin signals, both kept by the kernel, and both meaning "this came
+    from here" rather than "this touched it":
+
+      cwd  the process was launched from the worktree. The primary signal --
+           measured 4/4 against live dev processes where exe and cmdline
+           managed 0/4, because installed tooling lives outside the tree and
+           command lines are relative precisely *because* the cwd was set.
+      exe  the running image is a build artifact of this worktree. `air`
+           compiles ./tmp/main, execs it, and the child may chdir away; cwd
+           then names somewhere else and exe is the only thing left pointing
+           home. Deleting the worktree deletes the binary this process *is*.
+
+    An open file descriptor is deliberately not on this list. That is use, not
+    origin -- see find_fd_holders().
+    """
     if not host_supported():
         return []
     protected = protected_pids()
@@ -346,10 +381,10 @@ def find_processes(worktree):
         if pid in protected:
             continue
         cwd = read_link(pid, "cwd")
+        if not _inside(cwd, worktree) and not _inside(read_link(pid, "exe"), worktree):
+            continue
         if cwd is None:
-            continue
-        if cwd != worktree and not cwd.startswith(worktree + os.sep):
-            continue
+            cwd = ""
         if is_supervised(pid):
             continue
         fields = proc_stat_fields(pid)
@@ -371,6 +406,55 @@ def find_processes(worktree):
             }
         )
     return found
+
+
+def find_fd_holders(worktree, already_found):
+    """Processes holding a file open inside the worktree, without originating there.
+
+    Reported, never signalled. An open descriptor is evidence of *use*, not of
+    origin: an editor, an LSP, a `tail -f` from another terminal did not come
+    from this worktree and killing one because it had a file open is exactly the
+    blast radius this tool exists not to have.
+
+    Worth a line anyway, because removal **breaks** them, and silently. The
+    descriptor goes on pointing at a deleted inode, and an inotify watch on a
+    deleted directory never fires again -- so the editor keeps a buffer it can no
+    longer save and the watcher stops rebuilding, with no error anywhere. That is
+    a different harm from an orphan: an orphan survives and gets adopted, a
+    holder survives and stops working. Naming it makes it the human's call.
+    """
+    if not host_supported():
+        return []
+    protected = protected_pids()
+    holders = []
+    for pid in _numeric_pids():
+        if pid in protected or pid in already_found:
+            continue
+        fd_dir = os.path.join(PROC, str(pid), "fd")
+        try:
+            fds = os.listdir(fd_dir)
+        except OSError:
+            continue
+        paths = []
+        for fd in fds:
+            try:
+                target = os.readlink(os.path.join(fd_dir, fd))
+            except OSError:
+                continue
+            if target.endswith(" (deleted)"):
+                target = target[: -len(" (deleted)")]
+            if _inside(target, worktree) and target not in paths:
+                paths.append(target)
+            if len(paths) >= 3:
+                break
+        if not paths:
+            continue
+        if is_supervised(pid):
+            continue
+        holders.append(
+            {"pid": pid, "command": command_of(pid), "holding": paths}
+        )
+    return holders
 
 
 # --- compose projects, by the label the runtime already records ---------------
@@ -480,11 +564,13 @@ def collect(worktree):
         )
     if docker_note:
         notes.append(docker_note)
+    processes = find_processes(worktree)
     return {
         "worktree": worktree,
         "platform": sys.platform,
         "hostProcessesSupported": supported,
-        "processes": find_processes(worktree),
+        "processes": processes,
+        "fdHolders": find_fd_holders(worktree, {p["pid"] for p in processes}),
         "composeProjects": find_compose_projects(worktree, rows),
         "notes": notes,
     }
@@ -537,7 +623,19 @@ def render_report(data):
                     part for part in (container["status"], container["ports"]) if part
                 )
                 lines.append("    %s (%s)" % (container["name"], detail))
-    if not processes and not projects:
+    holders = data.get("fdHolders") or []
+    if holders:
+        lines.append(
+            "holding files open in %s — reported, not stopped; removal will "
+            "break them:" % data["worktree"]
+        )
+        for holder in holders:
+            lines.append(
+                "  pid %d %s" % (holder["pid"], holder["command"][:100])
+            )
+            for path in holder["holding"]:
+                lines.append("    %s" % path)
+    if not processes and not projects and not holders:
         lines.append("nothing running from %s" % data["worktree"])
     return "\n".join(lines)
 
@@ -578,12 +676,24 @@ def stop(worktree, grace):
                 % (project["project"], detail)
             )
 
-    stopped_groups = _signal_groups(processes, grace)
+    signalled = _signal_groups(processes, grace)
 
-    print(
-        "stopped: %d process group(s), %d compose project(s)"
-        % (stopped_groups, stopped_projects)
-    )
+    parts = []
+    if signalled["groups"]:
+        parts.append("%d process group(s)" % signalled["groups"])
+    if signalled["strays"]:
+        parts.append("%d individual process(es)" % signalled["strays"])
+    if stopped_projects:
+        parts.append("%d compose project(s)" % stopped_projects)
+    summary = "stopped: %s" % (", ".join(parts) if parts else "nothing")
+    holders = data.get("fdHolders") or []
+    if holders:
+        # Said again at the end, because the header scrolls and this is the part
+        # that outlives the run: something is about to break and nothing stopped it.
+        summary += "; left %d holding files open (removal will break them)" % len(
+            holders
+        )
+    print(summary)
     return 0
 
 
@@ -629,7 +739,11 @@ def _signal_groups(processes, grace):
         if _pid_alive(pid):
             _send(os.kill, pid, signal.SIGKILL)
 
-    return len(groups) + len(strays)
+    # Counted apart, because they are different acts. A group signal can reach
+    # more than was found -- that is the whole reason for it -- while a stray is
+    # one pid and exactly one pid. Reporting a stray as a "process group" makes
+    # the summary claim a blast radius the run did not have.
+    return {"groups": len(groups), "strays": len(strays)}
 
 
 def _send(fn, target, sig):

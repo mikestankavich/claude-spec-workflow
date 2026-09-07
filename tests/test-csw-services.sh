@@ -89,6 +89,57 @@ time.sleep(300)
   kill "$port_pid" 2>/dev/null
   wait "$port_pid" 2>/dev/null
 
+  # --- origin is not only cwd, and not every tie to the tree is an origin ---
+  #
+  # cwd answers "was this launched from here". Two other things the kernel
+  # already records answer questions cwd cannot:
+  #
+  #   exe -> inside   the running image IS a build artifact of this worktree
+  #                   (`air` builds ./tmp/main and execs it, then chdir's away).
+  #                   That is origin, so it is stopped.
+  #   fd  -> inside   the process is merely *using* a file in the tree -- an
+  #                   editor, an LSP, a tail from another terminal. That is use,
+  #                   not origin, so it is reported and never signalled.
+  #
+  # The asymmetry is the point: killing an editor because it had a file open is
+  # exactly the blast radius this tool exists not to have.
+  wt6=$(mktemp -d); TMPDIRS+=("$wt6")
+  out6=$(mktemp -d); TMPDIRS+=("$out6")
+  mkdir -p "$wt6/tmp" "$wt6/src"
+  cp /bin/sleep "$wt6/tmp/main"
+  printf 'seed\n' >"$wt6/src/watched.txt"
+
+  ( cd "$out6" && exec "$wt6/tmp/main" 300 ) >/dev/null 2>&1 & exe_pid=$!
+  ( cd "$out6" && exec tail -f "$wt6/src/watched.txt" ) >/dev/null 2>&1 & fd_pid=$!
+  sleep 0.6
+
+  six=$("$SERVICES" json "$wt6")
+  assert_eq "$(printf '%s' "$six" | jq --argjson p "$exe_pid" '[.processes[].pid] | index($p) != null')" \
+    "true" "a binary running from inside the tree is found, though its cwd is elsewhere"
+  assert_eq "$(printf '%s' "$six" | jq --argjson p "$fd_pid" '[.processes[].pid] | index($p) != null')" \
+    "false" "a process merely holding a file open is not treated as originating here"
+  assert_eq "$(printf '%s' "$six" | jq --argjson p "$fd_pid" '[.fdHolders[].pid] | index($p) != null')" \
+    "true" "...but it is reported as holding the worktree open"
+  holder_report=$(cd / && "$SERVICES" report "$wt6")
+  assert_contains "$holder_report" "not stopped" \
+    "the report says plainly that fd holders are reported rather than stopped"
+  # Not just "left alone" -- removal *breaks* them. The fd goes on pointing at a
+  # deleted inode and the inotify watch never fires again, so an editor or LSP
+  # holding a file here silently stops working. That consequence is the whole
+  # reason the line is worth printing.
+  assert_contains "$holder_report" "break" \
+    "the report says removal will break the holder, not merely that it was skipped"
+  assert_contains "$holder_report" "watched.txt" \
+    "the report names the path being held, so the human can tell whose it is"
+
+  "$SERVICES" stop "$wt6" --grace 1 >/dev/null
+  sleep 0.4
+  assert_eq "$(kill -0 "$exe_pid" 2>/dev/null && printf alive)" "" \
+    "the binary running from the tree is stopped"
+  assert_eq "$(kill -0 "$fd_pid" 2>/dev/null && printf alive)" "alive" \
+    "the fd holder survives teardown -- it was never ours to kill"
+  kill "$fd_pid" 2>/dev/null; wait "$fd_pid" 2>/dev/null
+
   # Finding nothing is information, not an error -- csw-sweep's rule.
   empty=$(mktemp -d); TMPDIRS+=("$empty")
   assert_status 0 "an empty worktree exits 0" -- "$SERVICES" report "$empty"

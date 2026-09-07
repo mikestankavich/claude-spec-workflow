@@ -74,12 +74,21 @@ compose file goes with it; and a container that bind-mounts the worktree can lea
 files behind that a later non-root removal cannot delete. Step 2 is where `ExitWorktree` removes
 the directory, so this is the last moment any of that is still possible.
 
-`csw-services` names every process group and compose project **before** it signals anything, so
-an unprompted destructive step is still reviewable. **Pass that on, including the empty case** —
-`nothing running from <path>` is an answer, and silence is indistinguishable from not having
-checked. If it names something that looks like a test harness mid-run, say so in the report:
-losing one costs a measurement, and the human should learn that from you rather than from a
-result that never arrives.
+`csw-services` names everything **before** it signals anything, so an unprompted destructive step
+is still reviewable. **Pass that on, including the empty case** — `nothing running from <path>`
+is an answer, and silence is indistinguishable from not having checked. If it names something
+that looks like a test harness mid-run, say so in the report: losing one costs a measurement, and
+the human should learn that from you rather than from a result that never arrives.
+
+**Report the `holding files open` section separately, and never treat it as done.** Those
+processes are *not* stopped, deliberately — an editor, an LSP or a `tail -f` from another
+terminal did not come from this worktree, and killing one is a blast radius this must not have.
+But removal still **breaks** them, and silently: the descriptor goes on pointing at a deleted
+inode, and an inotify watch on a deleted directory never fires again, so the editor holds a
+buffer it can no longer save and the watcher stops rebuilding with no error anywhere. That is a
+different failure from an orphan — an orphan survives and gets wrongly adopted, a holder
+survives and stops working. Name them and let the human decide; do not go looking for them to
+kill.
 
 Its scope is one path. It stops what came from *this* worktree and nothing else.
 **It is not a zombie reaper**, and there is no machine-wide mode to reach for. That boundary makes
@@ -360,6 +369,8 @@ is clean, even when it is obvious. Propose it, name what you would set it to, an
 | "I'll tear the services down after the worktree is removed" | Too late. The compose file went with the directory, and a graceful stop often has to run from inside it. |
 | "Nothing was running, so there's nothing to report" | Report the empty case. Silence reads as "not checked". |
 | "That container looks stale too, I'll take it down while I'm here" | Not yours. Cleanup is responsible for the mess it made — this worktree — and nothing else on the machine. |
+| "Something is holding a file open in there, I'll kill it so removal is clean" | Do not. It did not come from this worktree. Report it — removal will break it, and that is the human's call, not yours. |
+| "The holders section is empty-ish noise, I'll trim it from the report" | It names what is about to break silently. A stale fd and a dead inotify watch raise no error anywhere; the report is the only warning. |
 | "The ticket is clearly done, I'll close it" | Always ask. Every time. |
 | "Everything merged and the sweep is clean, so it's done" | Merged answers whether the work landed, never whether it is all there. Read the ledger first. |
 | "One item is short — I'll file it as a follow-up" | An item on the ledger never becomes a new ticket. The ticket is not done. |

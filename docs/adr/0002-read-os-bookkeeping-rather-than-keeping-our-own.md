@@ -54,16 +54,29 @@ TRA-1253's, and it was gone.
 
 Everything the teardown needs is already recorded by something that had to record it anyway:
 
-| question | who already answers it |
-|---|---|
-| where did this process come from? | the kernel — `/proc/<pid>/cwd` |
-| which worktree owns this container? | the container runtime — `com.docker.compose.project.working_dir` |
-| is this thing supervised, and therefore not ours? | the supervisor — the cgroup leaf systemd writes |
-| what worktrees exist at all? | git itself — `worktree list` |
+| question | who already answers it | act or report |
+|---|---|---|
+| was this process launched from the worktree? | the kernel — `/proc/<pid>/cwd` | stop |
+| is the running image a build artifact of the worktree? | the kernel — `/proc/<pid>/exe` | stop |
+| is something merely holding a file open in it? | the kernel — `/proc/<pid>/fd/*` | **report** |
+| which worktree owns this container? | the container runtime — `com.docker.compose.project.working_dir` | stop |
+| is this thing supervised, and therefore not ours? | the supervisor — the cgroup leaf systemd writes | never touch |
+| what worktrees exist at all? | git itself — `worktree list` | — |
 
 None of it can go stale, because **each record is maintained by the thing it describes**. A
-`.csw-services` file we write ourselves is a *fourth* record of facts three systems already keep
-accurately, and it is the only one of the four that can drift, be skipped, or be left behind.
+`.csw-services` file we write ourselves is one more record of facts these systems already keep
+accurately, and it is the only one that can drift, be skipped, or be left behind.
+
+**Origin and use are different claims, and only origin authorises stopping.** A cwd or an exe
+inside the tree says the process *came from here*. An open descriptor says only that it is
+*using* what is here — an editor, an LSP, a `tail -f` from another terminal — and killing one
+because it had a file open is exactly the blast radius this design exists to avoid.
+
+The holder is still worth a line, because removal **breaks** it, and silently: the descriptor
+goes on pointing at a deleted inode, and an inotify watch on a deleted directory never fires
+again. Nothing raises an error anywhere. So an orphan survives and is *wrongly adopted*, while a
+holder survives and *stops working* — two different harms, and the second has no other warning in
+the system.
 
 Two consequences fall out rather than being bolted on:
 
@@ -142,9 +155,10 @@ a blast radius of exactly one worktree.
   elsewhere is that a live run owns the worktree, and here nothing does. Without that line the
   design would be silent about every orphan created before it shipped, including the one that
   prompted it.
-- **Two shapes leave no origin trace, and both are accepted gaps.** A process that daemonised
-  and `chdir`'d away, classically to `/`; and a container started with plain `docker run`, which
-  carries no `working_dir` label. These are the cases a written ledger would have covered, and
+- **Two shapes leave no origin trace, and both are accepted gaps.** An *interpreted* process that
+  daemonised and `chdir`'d away, classically to `/` — a compiled one is still caught by `exe`,
+  which is what closes the `air` case the issue flagged; and a container started with plain
+  `docker run`, which carries no `working_dir` label. These are the cases a written ledger would have covered, and
   they are the honest cost of dropping it. Both are rare in dev tooling — the observed stack had
   neither — and neither justifies asking every dispatch to self-report on every run. Revisit
   only if they show up in practice.
