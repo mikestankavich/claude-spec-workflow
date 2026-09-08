@@ -207,6 +207,43 @@ Where an ADR is warranted, cite it from the README of the code it governs and no
 ADR directory — it wants to be reachable from where the mistake would be made. That is advice,
 not a gate.
 
+### Status, and what accepting one means
+
+**Merging an ADR is accepting it.** Declining is requesting edits, or reverting the commit,
+before the merge — which is cheap on purpose, since the ADR is always its own commit. Not doing
+either is agreement.
+
+That is *"review is the filter, not the prompt"* applied to the artifact that outlives the
+ticket, and it is the rule this repo has always run on. It had never been written down. A human
+working here acts on it without noticing; a dispatch writing an ADR unattended has no way to
+infer it, and neither does anyone arriving new — which is the whole reason it is here rather
+than in someone's head.
+
+So the two values are:
+
+- **`Accepted`** — the repo's standing decision, and what an ADR on the base branch reads. It is
+  what gets written, because it is what merging will make true. Every other line of a pull
+  request asserts its post-merge state; an ADR is not special.
+- **`Proposed`** — an ADR deliberately landed *undecided*, because the decision is real but the
+  agreement is not there yet. That takes intent. It is not what an unreviewed record drifts into
+  by nobody getting round to it.
+
+There is no third state and no separate blessing step. A status that had to be flipped after the
+fact would be a second record of something git already knows, and the only one of the two that
+could be wrong.
+
+**Supersession is expressed in the `Status:` line**, with a date and a link, rather than by
+editing the record it replaces:
+
+```
+Status: Accepted; the version's *source* superseded 2026-08-09 by [ADR 0004](0004-declared-platform-version.md)
+```
+
+A superseded ADR is never deleted and never rewritten into agreement with its replacement. The
+reasoning that was right at the time is the thing worth keeping — a record edited until it agrees
+with the present cannot tell anyone why the present is what it is. Where the supersession is
+partial, say which part, in a dated note at the top of the body.
+
 ## Gates
 
 A gate is a glob and a command. When a changed file matches the glob, the command joins the
