@@ -296,7 +296,11 @@ def protected_pids():
     group". Without job control a shell's background jobs inherit its group, so
     excluding the group would protect exactly the `npm run dev &` this exists to
     stop. A same-group process that is not an ancestor is a real candidate; it
-    is signalled individually rather than by group, in _signal_groups().
+    is signalled individually rather than by group, via protected_pgids() in
+    _signal_groups(). Candidacy and signalling are separate questions, and
+    getting the first right does not settle the second: a group signal reaches
+    a whole group, so an ancestor kept off this list is still killable through
+    a sibling that is on it.
 
     Computed from the real proc tree, not PROC: self and its ancestors are real
     pids regardless of where candidates are being read from.
@@ -324,6 +328,46 @@ def protected_pids():
         if current <= 1:
             break
     return protected
+
+
+def protected_pgids(protected=None):
+    """The process groups the protected pids belong to.
+
+    Excluding self and ancestors from *candidacy* is not enough on its own,
+    because a group signal reaches a whole group and the caller's ancestors sit
+    in groups whose other members are legitimate candidates. Under Claude Code
+    that is the ordinary case rather than a corner: the session leads the group
+    its MCP servers run in, each Bash invocation gets a group of its own, and
+    the session's cwd is the worktree being torn down. So the servers are
+    candidates, their group leader is the session, and killpg() on that group
+    kills the caller through the children it was allowed to stop.
+
+    Reading the group of every protected pid -- rather than only asking whether
+    a candidate's pgid *is* a protected pid -- also covers the case where an
+    ancestor is a group member without leading it, which is what a session
+    started from a shell pipeline looks like.
+    """
+    if protected is None:
+        protected = protected_pids()
+    groups = set()
+    for pid in protected:
+        try:
+            with open("/proc/%d/stat" % pid, "r") as handle:
+                stat = handle.read()
+        except OSError:
+            continue
+        # comm is parenthesised and may contain spaces and parens, so the
+        # fields after it are found from the *last* ")", never by splitting.
+        close = stat.rfind(")")
+        if close == -1:
+            continue
+        fields = stat[close + 2:].split()
+        if len(fields) >= 3:
+            try:
+                groups.add(int(fields[2]))
+            except ValueError:
+                continue
+    return groups
 
 
 def _numeric_pids():
@@ -741,18 +785,25 @@ def _signal_groups(processes, grace):
     leaves the leaf holding the port — which is the failure this exists to
     prevent.
     """
+    # Every group holding something we must not signal: the caller's own, and
+    # any group an ancestor sits in. os.getpgid(0) is kept explicitly rather
+    # than left to the /proc walk -- it is the one answer available even if
+    # reading /proc for ourselves fails, and it is the case that holds when the
+    # caller *does* share the session's group, outside Claude Code's Bash tool.
+    off_limits = protected_pgids()
     try:
-        my_pgid = os.getpgid(0)
+        off_limits.add(os.getpgid(0))
     except OSError:
-        my_pgid = None
+        pass
 
     groups = set()
     strays = []
     for entry in processes:
-        # A candidate sharing our own group is signalled individually. Taking
-        # the group down would take the caller with it, and a process that
-        # merely inherited our group is still the worktree's to stop.
-        if my_pgid is not None and entry["pgid"] == my_pgid:
+        # A candidate in an off-limits group is signalled individually. Taking
+        # the group down would take the caller or one of its ancestors with it,
+        # and a process that merely inherited that group is still the
+        # worktree's to stop.
+        if entry["pgid"] in off_limits:
             strays.append(entry["pid"])
         else:
             groups.add(entry["pgid"])

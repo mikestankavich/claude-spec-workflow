@@ -198,6 +198,52 @@ time.sleep(300)
   assert_eq "$(kill -0 "$strayed" 2>/dev/null && printf alive)" "" \
     "the strayed descendant goes with its process group"
 
+  # --- stop: a group led by an ancestor is never signalled as a group ---
+  # The shape the other fixtures cannot reach: a real session process tree
+  # *above* the tool, in a process group the tool does not share. That is every
+  # csw:cleanup run under Claude Code -- the session leads the group its MCP
+  # servers are in, and each Bash invocation gets a group of its own -- and it
+  # is where excluding self-and-ancestors from candidacy stops being enough.
+  # The ancestor is off the candidate list and its group still gets killpg'd,
+  # so the tool kills its own caller through the children it is allowed to stop.
+  wt7=$(mktemp -d); TMPDIRS+=("$wt7")
+  leader_pidfile="$wt7/leader.pid"; child_pidfile="$wt7/child.pid"
+  done_marker="$wt7/done"
+  # setsid: the shell leads its own group, as a session process does.
+  # os.setpgid(0,0) before the exec: the tool runs in a group of its own, as a
+  # Bash tool invocation does. Both halves are required to reproduce it.
+  setsid bash -c '
+    cd "$1" || exit 1
+    printf %s "$$" >"$2"
+    sleep 300 &
+    printf %s "$!" >"$3"
+    sleep 0.4
+    python3 -c "import os,sys; os.setpgid(0,0); os.execv(sys.argv[1], sys.argv[1:])" \
+      "$4" stop "$1" --grace 1 >/dev/null 2>&1
+    printf done >"$5"
+    sleep 30
+  ' _ "$wt7" "$leader_pidfile" "$child_pidfile" "$SERVICES" "$done_marker" >/dev/null 2>&1 &
+  for _ in $(seq 1 60); do
+    [ -s "$child_pidfile" ] && break
+    sleep 0.1
+  done
+  leader_pid=$(cat "$leader_pidfile" 2>/dev/null)
+  child_pid=$(cat "$child_pidfile" 2>/dev/null)
+  # The fixture is only meaningful if the leader really does lead the child's
+  # group -- otherwise it proves nothing about the partition.
+  assert_eq "$(ps -o pgid= -p "${child_pid:-0}" 2>/dev/null | tr -d ' ')" "$leader_pid" \
+    "the fixture's candidate is in a group led by an ancestor of the tool"
+  for _ in $(seq 1 80); do
+    [ -f "$done_marker" ] && break
+    kill -0 "${leader_pid:-0}" 2>/dev/null || break
+    sleep 0.1
+  done
+  assert_eq "$(kill -0 "${leader_pid:-0}" 2>/dev/null && printf alive)" "alive" \
+    "stop leaves the ancestor leading the candidate's group alive"
+  assert_eq "$(kill -0 "${child_pid:-0}" 2>/dev/null && printf alive)" "" \
+    "...and still stops the candidate itself, individually"
+  kill -- "-${leader_pid:-0}" 2>/dev/null
+
   # Stopping nothing is success, and says so rather than passing over in silence.
   quiet=$(mktemp -d); TMPDIRS+=("$quiet")
   assert_status 0 "stopping an empty worktree exits 0" -- "$SERVICES" stop "$quiet"
