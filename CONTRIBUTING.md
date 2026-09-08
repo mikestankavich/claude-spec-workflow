@@ -141,6 +141,36 @@ chore: update dependencies
    - Be open to suggestions
    - Ask questions if anything is unclear
 
+### The changelog
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and its
+guiding principle here is the one that is easy to get wrong: **a `## [Unreleased]` section is
+kept at the top, and a notable change is written into it by the pull request that makes the
+change.** Not afterwards, and never into the most recent released section — that section is
+dated and tagged, and a later entry inside it says the work shipped on a day it did not.
+
+That is not hypothetical. Of the eight pull requests that made up 1.2.0, exactly one wrote a
+changelog entry, and it wrote it into the released `## [1.1.0]` section — dating a September
+change to 4 August. There was no `[Unreleased]` heading to write into, so appending to the
+changelog landed on the newest release by construction.
+
+Not every PR earns an entry. A refactor with no behaviour change, a test, a typo — nothing to
+say. The test is whether someone upgrading would want to know.
+
+**A release pull request** then does two things and nothing else: move what is actually
+shipping from `## [Unreleased]` into a new `## [X.Y.Z] - YYYY-MM-DD` section, and flip
+`VERSION`, `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` to `X.Y.Z`.
+`tests/run-tests.sh` fails if `VERSION` names a release with no matching section, so a bump
+without its notes cannot merge.
+
+Borrowed from `trakrf/platform`, which enforces the same rule in
+`scripts/assert-changelog-section.sh`. One difference: platform's `VERSION` carries `X.Y.Z-dev`
+between releases, so its gate is inert on ordinary pull requests and fires only on the release
+one. CSW's `VERSION` always holds the last released number, so the check is always on and
+ordinarily satisfied by the section already there. The `-dev` phase is deliberately not
+adopted: it exists on platform because the merge build *is* the release build and the version
+has to be a property of the commit, and CSW tags after the fact instead.
+
 ## Adding a Config Key or Gate
 
 New `.claude/csw.json` keys are always welcome when they earn their keep. Follow this
