@@ -66,11 +66,17 @@ changelog="$REPO_ROOT/CHANGELOG.md"
 
 assert_contains "$(cat "$changelog")" "## [1.0.0]" "CHANGELOG has a 1.0.0 entry"
 
-# At most one Unreleased section — two stray ones (one of them empty) previously
-# rode along into the middle of the file and would have leaked into the 1.0.0
-# release notes.
+# Exactly one Unreleased section, and it is the first version heading in the file.
+# The original rule here was "none", written when two stray ones (one of them empty)
+# rode along into the *middle* of the file and would have leaked into the 1.0.0 release
+# notes. The hazard was always their position rather than their existence -- Keep a
+# Changelog wants one at the top, and without it an entry has nowhere to go but the last
+# released section, which is how a September change ended up dated 4 August in [1.1.0].
 unreleased_count=$(grep -c '^## \[Unreleased\]' "$changelog")
-assert_eq "$unreleased_count" "0" "CHANGELOG has no stray Unreleased sections"
+assert_eq "$unreleased_count" "1" "CHANGELOG keeps exactly one Unreleased section"
+first_version_heading=$(grep -m1 '^## \[' "$changelog")
+assert_eq "$first_version_heading" "## [Unreleased]" \
+  "the Unreleased section is the first version heading, not stranded mid-file"
 
 # Version headers must read newest-first, consistently, with no version out of
 # order (0.1.0 previously sorted above 0.4.0).
@@ -152,5 +158,29 @@ if [ -d "$adr_dir" ]; then
     esac
   done
 fi
+
+# --- The changelog carries the release it declares ---
+# Ported from trakrf/platform's scripts/assert-changelog-section.sh. One difference:
+# platform's VERSION carries X.Y.Z-dev between releases, so its gate is inert on every
+# ordinary PR and fires only on the release one. CSW's VERSION always holds the last
+# released number, so this is always on and ordinarily satisfied by the section already
+# there -- it bites when a release PR bumps VERSION and forgets the notes.
+version=$(tr -d '[:space:]' <"$REPO_ROOT/VERSION")
+# -F, and the heading keeps its closing bracket, so 1.2.0 is not satisfied by [1.2.01].
+if grep -qF "## [${version}]" "$changelog"; then
+  PASSES=$((PASSES + 1))
+else
+  FAILURES=$((FAILURES + 1))
+  printf 'FAIL VERSION declares %s but CHANGELOG.md has no "## [%s]" section\n' \
+    "$version" "$version" >&2
+fi
+
+# An entry has to have somewhere to go that is not the last released section. Without this
+# heading, "append to the changelog" lands on the newest release by construction -- which is
+# how a September change ended up dated 4 August inside [1.1.0].
+assert_contains "$(cat "$changelog")" "keepachangelog.com/en/1.1.0/" \
+  "CHANGELOG.md cites the Keep a Changelog version it follows"
+assert_contains "$(cat "$REPO_ROOT/CONTRIBUTING.md")" "Unreleased" \
+  "CONTRIBUTING says where a changelog entry goes"
 
 report
