@@ -105,7 +105,9 @@ branch shipped.
   origin out of bookkeeping the machine already keeps — `/proc/<pid>/cwd` for host processes,
   `com.docker.compose.project.working_dir` for compose projects — so nothing is written and
   nothing can go stale. It signals process groups, not pids, because the tree's leaf is what
-  holds the port. Supervised `systemctl --user` units, unlabelled containers and anything
+  holds the port — except for a group holding the caller or one of its ancestors, which is
+  signalled process by process instead, so tearing a worktree down can never take the session
+  doing it with it. Supervised `systemctl --user` units, unlabelled containers and anything
   outside the worktree are never touched, and there is no machine-wide acting mode. Teardown
   is mandatory and unprompted, on the same rule as branch cleanup, and it names everything
   before it signals it. `csw-sweep` reports the two populations it must not act on: what is
