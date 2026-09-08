@@ -113,4 +113,44 @@ for doc in "$readme" "$config_doc"; do
   fi
 done
 
+# --- The ADR convention, enforced rather than described ---
+# csw:work writes these unattended, so "the directory supplies the convention" is only true
+# while the directory actually carries one. A record that drifts from the documented shape
+# teaches the next dispatch the drift, because that is what it reads to derive the format.
+assert_contains "$(cat "$config_doc")" "Status" \
+  "configuration.md documents the ADR Status field"
+for value in "Proposed" "Accepted"; do
+  assert_contains "$(cat "$config_doc")" "$value" \
+    "configuration.md names $value as an ADR status"
+done
+# A dispatch may propose a decision; it may not take one on the repo's behalf. That is the
+# whole reason there are two values rather than none.
+# The rule this repo ran on unwritten: merging an ADR is accepting it, and declining is a
+# revert before the merge. A dispatch writing one unattended cannot infer that, which is
+# why it is documented rather than left to be picked up.
+assert_contains "$(cat "$config_doc")" "Merging an ADR is accepting it" \
+  "configuration.md states that merging an ADR accepts it"
+
+adr_dir="$REPO_ROOT/docs/adr"
+if [ -d "$adr_dir" ]; then
+  for adr in "$adr_dir"/[0-9]*.md; do
+    [ -e "$adr" ] || continue
+    name=$(basename "$adr")
+    head_block=$(head -6 "$adr")
+    for field in "Date:" "Status:" "Tracking:"; do
+      assert_contains "$head_block" "$field" "$name carries $field"
+    done
+    # Anything after the value is supersession detail, which the Status line is where
+    # it belongs -- so match the start of the value, not the whole line.
+    status=$(printf '%s\n' "$head_block" | sed -n 's/^Status: //p')
+    case "$status" in
+      Proposed|Proposed\;*|Accepted|Accepted\;*)
+        PASSES=$((PASSES + 1)) ;;
+      *)
+        FAILURES=$((FAILURES + 1))
+        printf 'FAIL %s has an unknown Status: %s\n' "$name" "$status" >&2 ;;
+    esac
+  done
+fi
+
 report
