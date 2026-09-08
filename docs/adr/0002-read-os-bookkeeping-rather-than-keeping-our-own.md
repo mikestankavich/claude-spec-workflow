@@ -1,7 +1,7 @@
 # 0002 — Read the bookkeeping the OS already keeps, rather than keeping our own
 
 Date: 2026-09-07
-Status: Proposed
+Status: Accepted
 Tracking: #119
 
 ## Context

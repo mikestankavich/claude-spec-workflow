@@ -1,7 +1,7 @@
 # 0001 — Dispose of mid-build discoveries before the commit, not after the PR
 
 Date: 2026-09-07
-Status: Proposed
+Status: Accepted
 Tracking: #116, #114
 
 ## Context
